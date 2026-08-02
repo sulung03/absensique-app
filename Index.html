@@ -58,7 +58,6 @@
 </head>
 <body class="bg-slate-100 text-slate-800 font-sans antialiased">
     
-    <!-- Layar Login -->
     <div id="login-screen" class="min-h-screen flex items-center justify-center bg-slate-900 p-4 relative overflow-hidden z-50">
         <i data-lucide="fingerprint" class="absolute -right-20 -bottom-20 w-96 h-96 text-slate-800/50"></i>
         
@@ -80,7 +79,6 @@
         </div>
     </div>
 
-    <!-- Layout Utama -->
     <div id="app-layout" class="min-h-screen flex-col md:flex-row hidden">
         
         <!-- Sidebar Desktop -->
@@ -129,8 +127,8 @@
     <div id="print-area" class="hidden bg-white text-black max-w-2xl mx-auto"></div>
 
     <script>
-        // --- KONFIGURASI AWAL ---
         const TGL_HARI_INI = new Date().toISOString().split('T')[0];
+        // URL Apps Script Google Sheets Anda
         const GOOGLE_SHEETS_API_URL = "https://script.google.com/macros/s/AKfycbziKKUp0oJvJwzVpTfKkAdRFoNCQLbRG5_YWvHwKtNsK2UZzMIHPmXAqwlBtIV4uu-7YQ/exec"; 
 
         window.appState = {
@@ -142,69 +140,93 @@
             attendances: [], leaves: [], overtimes: [], payrolls: []
         };
 
-        // --- SISTEM PENYIMPANAN PINTAR (SMART MERGE & ANTI CORS) ---
         async function loadData() {
+            // 1. Muat dari LocalStorage (Biar aplikasi langsung terbuka cepat tanpa nunggu loading)
             let localData = localStorage.getItem('absensique_db');
-            let parsedLocal = localData ? JSON.parse(localData) : null;
-            
-            if (parsedLocal) {
+            if (localData) {
+                let parsed = JSON.parse(localData);
                 let tempUser = appState.currentUser;
-                window.appState = { ...window.appState, ...parsedLocal };
+                window.appState = { ...window.appState, ...parsed };
                 appState.currentUser = tempUser; 
             }
             
+            // 2. Tarik dari Google Sheets (Gunakan Anti-Cache "?timestamp=" agar selalu dapat data baru)
             if (GOOGLE_SHEETS_API_URL) {
                 try {
-                    let res = await fetch(GOOGLE_SHEETS_API_URL);
+                    const cacheBusterUrl = GOOGLE_SHEETS_API_URL + "?timestamp=" + new Date().getTime();
+                    let res = await fetch(cacheBusterUrl, { cache: "no-store" });
                     let cloudData = await res.json();
                     
                     if (cloudData && Object.keys(cloudData).length > 0) {
-                        let localCount = parsedLocal ? (parsedLocal.attendances.length + parsedLocal.leaves.length + parsedLocal.overtimes.length) : 0;
-                        let cloudCount = (cloudData.attendances ? cloudData.attendances.length : 0) + (cloudData.leaves ? cloudData.leaves.length : 0) + (cloudData.overtimes ? cloudData.overtimes.length : 0);
+                        // MERGE PINTAR: Gabungkan array tanpa menghapus data lokal yang belum terkirim
+                        const arrayKeys = ['attendances', 'leaves', 'overtimes', 'payrolls', 'employees', 'schedules'];
                         
-                        // Smart Merge: Jangan timpa lokal jika lokal memiliki data absensi yang lebih baru/banyak
-                        if (cloudCount >= localCount) {
-                            let tempUser = appState.currentUser;
-                            window.appState = { ...window.appState, ...cloudData };
-                            appState.currentUser = tempUser;
-                            localStorage.setItem('absensique_db', JSON.stringify(window.appState)); 
-                        } else {
-                            // Jika data lokal lebih banyak (ada yg blm terkirim), paksa dorong ke server
-                            saveData();
-                        }
+                        arrayKeys.forEach(key => {
+                            if (cloudData[key] && Array.isArray(cloudData[key])) {
+                                cloudData[key].forEach(cloudItem => {
+                                    // Cek apakah item dari cloud sudah ada di memori HP ini
+                                    let localItem = window.appState[key].find(l => l.id === cloudItem.id);
+                                    
+                                    if (!localItem) {
+                                        // Jika belum ada (berarti Karyawan B baru absen di HP lain), masukkan ke memori kita!
+                                        window.appState[key].push(cloudItem);
+                                    } else {
+                                        // Jika sudah ada, timpa hanya jika Cloud punya data "Keluar/Out" yang belum ada di Lokal
+                                        if (key === 'attendances' && cloudItem.clockOut && !localItem.clockOut) {
+                                            localItem.clockOut = cloudItem.clockOut;
+                                            localItem.photoOut = cloudItem.photoOut;
+                                        }
+                                        // Update status persetujuan Izin / Lembur dari Admin di Cloud
+                                        if ((key === 'leaves' || key === 'overtimes') && cloudItem.status !== 'Pending') {
+                                            localItem.status = cloudItem.status;
+                                        }
+                                    }
+                                });
+                            }
+                        });
+
+                        // Sinkronkan Pengaturan
+                        if(cloudData.settings) appState.settings = cloudData.settings;
+
+                        // Simpan kembali hasil gabungan ke HP
+                        localStorage.setItem('absensique_db', JSON.stringify(window.appState)); 
                     }
-                } catch(e) { console.warn("Google Sheets Offline (Data tetap aman di HP/Laptop).", e); }
+                } catch(e) { console.warn("Peringatan: Gagal terhubung ke Cloud Google. Aplikasi tetap jalan offline.", e); }
             }
         }
 
         async function saveData() {
+            // 1. Simpan Lokal (HP)
             let dataToSave = JSON.parse(JSON.stringify(window.appState));
             dataToSave.currentUser = null;
             dataToSave.currentView = 'dashboard';
-
-            // 1. Amankan di memori browser dulu
             localStorage.setItem('absensique_db', JSON.stringify(dataToSave));
             
-            // 2. Dorong ke Cloud via mode 'no-cors' agar tidak diblokir security browser
+            // 2. Dorong ke Cloud via POST secara background (Tanpa harus nunggu balasan)
             if (GOOGLE_SHEETS_API_URL) {
                 try {
-                    await fetch(GOOGLE_SHEETS_API_URL, {
+                    // Pakai mode no-cors agar tidak diblokir browser, lalu text/plain agar Google Apps Script bisa membaca payload-nya
+                    fetch(GOOGLE_SHEETS_API_URL, {
                         method: 'POST',
                         mode: 'no-cors', 
                         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                         body: JSON.stringify(dataToSave)
                     });
-                } catch (e) { console.error("Koneksi gagal, data menunggu dikirim ulang", e); }
+                } catch (e) { console.error("Koneksi pengiriman background tertunda", e); }
             }
         }
 
-        // --- SISTEM SYNC DATA MANUAL ---
         window.syncDataManual = async function() {
-            showToast("Sinkronisasi...", "Mencocokkan data terbaru dengan server...");
-            await saveData(); // Kirim data lokal terbaru ke server
-            await loadData(); // Tarik data baru dari server (jika ada)
+            const btn = event.currentTarget;
+            if(btn) { btn.innerHTML = `<i data-lucide="loader-2" class="w-3 h-3 sm:w-4 sm:h-4 animate-spin"></i> Loading...`; btn.disabled = true; }
+            
+            showToast("Menyinkronkan...", "Menarik data absensi dari seluruh karyawan dari server...");
+            
+            await saveData(); // Dorong yang belum masuk
+            await loadData(); // Tarik yang baru
             render();
-            showToast("Berhasil", "Data absensi 100% tersinkron!");
+            
+            showToast("Berhasil", "Data Anda sekarang 100% tersinkron!");
         }
 
         const menus = [
@@ -318,7 +340,7 @@
                 let outTime = att && att.clockOut ? `<span class="bg-slate-200 text-slate-800 px-2 py-1 rounded text-xs font-black shadow-sm break-keep">${att.clockOut}</span>` : '-';
                 let statBadge = att ? `<span class="text-[10px] font-bold px-2 py-0.5 rounded break-keep ${att.status==='Terlambat'?'bg-red-100 text-red-600':'bg-emerald-100 text-emerald-600'}">${att.status}</span>` : `<span class="text-xs text-slate-400 font-medium">Belum Hadir</span>`;
                 
-                // Tambahkan Efek Onclick Agar Foto Bisa Tampil Fullscreen
+                // Efek Hover Pointer dan Pop-up Gambar Besar
                 let photoInHTML = att && att.photoIn ? `<img src="${att.photoIn}" onclick="openPhotoModal('${att.photoIn}')" class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg object-cover border shadow-sm cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all hover:scale-110" title="Klik untuk perbesar">` : '-';
                 let photoOutHTML = att && att.photoOut ? `<img src="${att.photoOut}" onclick="openPhotoModal('${att.photoOut}')" class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg object-cover border shadow-sm cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all hover:scale-110" title="Klik untuk perbesar">` : '-';
 
@@ -361,13 +383,13 @@
                         <div class="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-sm"><h3 class="text-base sm:text-lg font-bold text-slate-800 flex items-center gap-2 mb-3 sm:mb-4"><i data-lucide="calendar" class="text-blue-600 w-5 h-5"></i> Jadwal Shift Saya</h3><div class="overflow-y-auto max-h-32 sm:max-h-40 custom-scrollbar border border-slate-100 rounded-xl"><table class="w-full text-xs sm:text-sm text-left"><thead class="bg-slate-50 font-bold sticky top-0 border-b border-slate-100"><tr><th class="p-2 sm:p-3">Tanggal</th><th class="p-2 sm:p-3">Shift</th></tr></thead><tbody>${appState.schedules.filter(s => s.empId === appState.currentUser.id && s.date.startsWith(TGL_HARI_INI.substring(0, 7))).map(sch => { let shiftName = appState.shifts.find(s => s.id === sch.shiftId)?.name || 'Default'; if (sch.shiftId === 'OFF') shiftName = '<span class="text-red-500 font-bold">LIBUR (OFF)</span>'; return `<tr class="border-b border-slate-50 hover:bg-slate-50"><td class="p-2 sm:p-3">${sch.date}</td><td class="p-2 sm:p-3">${shiftName}</td></tr>`; }).join('') || '<tr><td colspan="2" class="p-3 text-slate-500 text-center">Belum ada jadwal.</td></tr>'}</tbody></table></div></div>
                     </div>` : ''}
 
-                    <!-- Tabel Riwayat (Dengan Tombol Sync Refresh tanpa filter role) -->
+                    <!-- Tabel Riwayat (Tombol Sync Tersedia Untuk Semua) -->
                     <div class="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200 mt-6 sm:mt-8 w-full">
                         <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
                             <h3 class="text-base sm:text-lg font-bold text-slate-800 flex items-center gap-2"><i data-lucide="list-checks" class="text-blue-600 w-5 h-5"></i> Riwayat Absensi Hari Ini</h3>
                             <div class="flex gap-2 items-center self-start sm:self-auto">
                                 <span class="text-[10px] sm:text-xs font-bold bg-slate-100 px-3 py-1 rounded-full text-slate-600">${TGL_HARI_INI}</span>
-                                <button onclick="syncDataManual()" class="bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold transition-colors flex items-center gap-1 shadow-sm"><i data-lucide="refresh-cw" class="w-3 h-3"></i> Sync Data</button>
+                                <button onclick="syncDataManual()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-[10px] sm:text-xs font-bold transition-colors shadow-md flex items-center gap-1.5"><i data-lucide="refresh-cw" class="w-3 h-3 sm:w-4 sm:h-4"></i> Sync Data</button>
                             </div>
                         </div>
                         <div class="w-full overflow-x-auto custom-scrollbar"><table class="w-full text-left text-xs sm:text-sm whitespace-nowrap min-w-[600px]"><thead class="bg-slate-50 text-slate-600 font-bold border-b border-slate-200"><tr><th class="p-3 sm:p-4">Nama Karyawan</th><th class="p-3 sm:p-4">Shift</th><th class="p-3 sm:p-4">Waktu Masuk</th><th class="p-3 sm:p-4">Waktu Keluar</th><th class="p-3 sm:p-4">Status</th></tr></thead><tbody>${tableRows || `<tr><td colspan="5" class="p-6 sm:p-8 text-center text-slate-500">Belum ada data absensi hari ini.</td></tr>`}</tbody></table></div>
@@ -377,7 +399,6 @@
             setTimeout(() => { initChart(isKaryawan); }, 100);
         }
 
-        // --- FUNGSI POP-UP FOTO BESAR ---
         window.openPhotoModal = function(imgSrc) {
             const html = `
                 <div class="fixed inset-0 bg-black/90 z-[70] flex justify-center items-center p-4 backdrop-blur-md fade-in" onclick="document.getElementById('modal-root').innerHTML = ''">
@@ -482,20 +503,14 @@
                     let scanner = document.getElementById('scanner-effect');
                     if(scanner) scanner.classList.remove('hidden');
 
-                    // Setup Tracking.js AI
-                    if (typeof tracking === 'undefined') {
-                        fallbackNoAI(type); return;
-                    }
+                    if (typeof tracking === 'undefined') { fallbackNoAI(type); return; }
 
                     const overlayCanvas = document.getElementById('face-overlay');
-                    overlayCanvas.width = video.videoWidth;
-                    overlayCanvas.height = video.videoHeight;
+                    overlayCanvas.width = video.videoWidth; overlayCanvas.height = video.videoHeight;
                     const ctx = overlayCanvas.getContext('2d');
 
                     let tracker = new tracking.ObjectTracker('face');
-                    tracker.setInitialScale(4);
-                    tracker.setStepSize(2);
-                    tracker.setEdgesDensity(0.1);
+                    tracker.setInitialScale(4); tracker.setStepSize(2); tracker.setEdgesDensity(0.1);
 
                     trackerTask = tracking.track(video, tracker);
 
@@ -507,7 +522,6 @@
                         let container = document.getElementById('scanner-container');
 
                         if (event.data.length === 0) {
-                            // Wajah tidak ditemukan (Kunci tombol)
                             btn.disabled = true;
                             btn.className = "w-full py-3.5 sm:py-4 bg-slate-400 cursor-not-allowed text-white font-black rounded-xl flex items-center justify-center gap-2 shadow-lg uppercase tracking-widest text-sm sm:text-base transition-all";
                             document.getElementById('btn-text').innerText = "MENUNGGU WAJAH...";
@@ -516,7 +530,6 @@
                             document.getElementById('scanner-line').style.boxShadow = '0 0 15px #ef4444';
                             if(container) container.classList.remove('face-detected');
                         } else {
-                            // Wajah Terdeteksi (Buka kunci tombol)
                             btn.disabled = false;
                             let colorBtn = type === 'Masuk' ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-red-500 hover:bg-red-600';
                             let iconBtn = type === 'Masuk' ? 'log-in' : 'log-out';
@@ -528,10 +541,8 @@
                             document.getElementById('scanner-line').style.boxShadow = '0 0 15px #10b981';
                             if(container) container.classList.add('face-detected');
 
-                            // Gambar kotak fokus hijau di wajah
                             event.data.forEach(function(rect) {
-                                ctx.strokeStyle = '#10b981';
-                                ctx.lineWidth = 4;
+                                ctx.strokeStyle = '#10b981'; ctx.lineWidth = 4;
                                 let mirroredX = overlayCanvas.width - rect.x - rect.width;
                                 ctx.strokeRect(mirroredX, rect.y, rect.width, rect.height);
                             });
@@ -539,10 +550,7 @@
                         lucide.createIcons();
                     });
                 };
-            } catch (err) {
-                // Kamera error/diblokir, berikan peringatan dan aktifkan tombol mode darurat
-                fallbackNoAI(type, true);
-            }
+            } catch (err) { fallbackNoAI(type, true); }
         }
 
         function fallbackNoAI(type, errorCamera = false) {
@@ -583,7 +591,7 @@
             const canvas = document.getElementById('canvas-capture');
             
             if (video && !video.classList.contains('hidden')) {
-                // KOMPRESI FOTO AGAR MUAT DI GOOGLE SHEETS
+                // KOMPRESI OTOMATIS: Turunkan resolusi agar pengiriman ke server cepat dan aman
                 const MAX_WIDTH = 250; 
                 const scaleSize = MAX_WIDTH / video.videoWidth;
                 canvas.width = MAX_WIDTH; 
@@ -605,7 +613,8 @@
                 
                 if(exist) { exist.clockIn = timeStr; exist.status = status; exist.photoIn = photoData; exist.shift = shiftData.name; }
                 else { appState.attendances.push({ id: generateId(), empId, date: TGL_HARI_INI, shift: shiftData.name, clockIn: timeStr, clockOut: null, status, photoIn: photoData, photoOut: null }); }
-                showToast("Memproses...", `Mohon JANGAN DI-REFRESH, foto sedang di-upload...`);
+                
+                showToast("Memproses...", `Mengirim foto... Mohon JANGAN DI-REFRESH.`);
             } else {
                 if(!exist || !exist.clockIn) { showToast("Gagal", "Anda belum absen masuk!", "warning"); return; }
                 if(exist.clockOut) { showToast("Gagal", "Anda sudah absen keluar hari ini!", "warning"); return; }
@@ -614,12 +623,15 @@
                 let shiftEndObj = new Date(TGL_HARI_INI + "T" + shiftData.end + ":00");
                 let overMin = Math.floor((now - shiftEndObj) / 60000);
                 if(overMin > 0) appState.overtimes.push({ id: generateId(), empId, date: TGL_HARI_INI, durationMins: overMin, status: 'Pending' });
-                showToast("Memproses...", `Mohon JANGAN DI-REFRESH, data dikirim...`);
+                
+                showToast("Memproses...", `Menyelesaikan shift... Mohon JANGAN DI-REFRESH.`);
             }
             
             closeModal();
+            // Panggil save secara sinkronus untuk memastikan nyangkut di server
             await saveData(); 
-            showToast("Berhasil!", "Data absen telah TERSIMPAN PERMANEN.");
+            
+            showToast("Sukses!", "Data absensi Anda berhasil TERSIMPAN di server.");
             render();
         }
 
@@ -645,7 +657,7 @@
                             <input type="hidden" id="edit-emp-id" value="${emp.id}">
                             <div><label class="block text-[10px] font-bold text-slate-700 mb-1">Nama</label><input type="text" id="edit-emp-name" value="${emp.name}" class="w-full p-2.5 bg-slate-50 border rounded-xl font-bold outline-none text-sm"></div>
                             <div><label class="block text-[10px] font-bold text-slate-700 mb-1">Jabatan</label><input type="text" id="edit-emp-pos" value="${emp.position}" class="w-full p-2.5 bg-slate-50 border rounded-xl font-bold outline-none text-sm"></div>
-                            <div><label class="block text-[10px] font-bold text-slate-700 mb-1">Kontak</label><input type="text" id="edit-emp-phone" value="${emp.phone}" class="w-full p-2.5 bg-slate-50 border rounded-xl font-bold outline-none text-sm"></div>
+                            <div><label class="block text-[10px] font-bold text-slate-700 mb-1">No HP</label><input type="text" id="edit-emp-phone" value="${emp.phone}" class="w-full p-2.5 bg-slate-50 border rounded-xl font-bold outline-none text-sm"></div>
                             <div><label class="block text-[10px] font-bold text-slate-700 mb-1">Password</label><input type="text" id="edit-emp-pass" value="${emp.password}" class="w-full p-2.5 bg-slate-50 border rounded-xl font-bold outline-none text-sm"></div>
                             <button onclick="saveKaryawan()" class="w-full mt-2 bg-blue-600 text-white font-black py-3 rounded-xl shadow-md text-sm">SIMPAN</button>
                         </div>
