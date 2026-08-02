@@ -128,6 +128,7 @@
 
     <script>
         const TGL_HARI_INI = new Date().toISOString().split('T')[0];
+        
         // URL Apps Script Google Sheets Anda
         const GOOGLE_SHEETS_API_URL = "https://script.google.com/macros/s/AKfycbziKKUp0oJvJwzVpTfKkAdRFoNCQLbRG5_YWvHwKtNsK2UZzMIHPmXAqwlBtIV4uu-7YQ/exec"; 
 
@@ -140,8 +141,8 @@
             attendances: [], leaves: [], overtimes: [], payrolls: []
         };
 
+        // --- SISTEM SYNC SMART MERGE & SOFT DELETE ---
         async function loadData() {
-            // 1. Muat dari LocalStorage (Biar aplikasi langsung terbuka cepat tanpa nunggu loading)
             let localData = localStorage.getItem('absensique_db');
             if (localData) {
                 let parsed = JSON.parse(localData);
@@ -150,45 +151,50 @@
                 appState.currentUser = tempUser; 
             }
             
-            // 2. Tarik dari Google Sheets (Gunakan Anti-Cache "?timestamp=" agar selalu dapat data baru)
             if (GOOGLE_SHEETS_API_URL) {
                 try {
+                    // Gunakan Anti-Cache agar selalu mendapat data terbaru tanpa halangan browser
                     const cacheBusterUrl = GOOGLE_SHEETS_API_URL + "?timestamp=" + new Date().getTime();
                     let res = await fetch(cacheBusterUrl, { cache: "no-store" });
                     let cloudData = await res.json();
                     
                     if (cloudData && Object.keys(cloudData).length > 0) {
-                        // MERGE PINTAR: Gabungkan array tanpa menghapus data lokal yang belum terkirim
                         const arrayKeys = ['attendances', 'leaves', 'overtimes', 'payrolls', 'employees', 'schedules'];
                         
                         arrayKeys.forEach(key => {
                             if (cloudData[key] && Array.isArray(cloudData[key])) {
                                 cloudData[key].forEach(cloudItem => {
-                                    // Cek apakah item dari cloud sudah ada di memori HP ini
                                     let localItem = window.appState[key].find(l => l.id === cloudItem.id);
                                     
                                     if (!localItem) {
-                                        // Jika belum ada (berarti Karyawan B baru absen di HP lain), masukkan ke memori kita!
                                         window.appState[key].push(cloudItem);
                                     } else {
-                                        // Jika sudah ada, timpa hanya jika Cloud punya data "Keluar/Out" yang belum ada di Lokal
+                                        // Singkronisasi Hapus Lunak (Soft Delete) dari Server!
+                                        if (cloudItem.isDeleted) {
+                                            localItem.isDeleted = true;
+                                        }
+                                        
+                                        // Update status dari Admin di Cloud
                                         if (key === 'attendances' && cloudItem.clockOut && !localItem.clockOut) {
                                             localItem.clockOut = cloudItem.clockOut;
                                             localItem.photoOut = cloudItem.photoOut;
                                         }
-                                        // Update status persetujuan Izin / Lembur dari Admin di Cloud
                                         if ((key === 'leaves' || key === 'overtimes') && cloudItem.status !== 'Pending') {
                                             localItem.status = cloudItem.status;
+                                        }
+
+                                        // Update jika Admin mengganti Password atau Nomor HP karyawan dari perangkat lain
+                                        if (key === 'employees') {
+                                            if(cloudItem.password !== localItem.password) localItem.password = cloudItem.password;
+                                            if(cloudItem.name !== localItem.name) localItem.name = cloudItem.name;
+                                            if(cloudItem.phone !== localItem.phone) localItem.phone = cloudItem.phone;
                                         }
                                     }
                                 });
                             }
                         });
 
-                        // Sinkronkan Pengaturan
                         if(cloudData.settings) appState.settings = cloudData.settings;
-
-                        // Simpan kembali hasil gabungan ke HP
                         localStorage.setItem('absensique_db', JSON.stringify(window.appState)); 
                     }
                 } catch(e) { console.warn("Peringatan: Gagal terhubung ke Cloud Google. Aplikasi tetap jalan offline.", e); }
@@ -196,16 +202,14 @@
         }
 
         async function saveData() {
-            // 1. Simpan Lokal (HP)
             let dataToSave = JSON.parse(JSON.stringify(window.appState));
             dataToSave.currentUser = null;
             dataToSave.currentView = 'dashboard';
             localStorage.setItem('absensique_db', JSON.stringify(dataToSave));
             
-            // 2. Dorong ke Cloud via POST secara background (Tanpa harus nunggu balasan)
             if (GOOGLE_SHEETS_API_URL) {
                 try {
-                    // Pakai mode no-cors agar tidak diblokir browser, lalu text/plain agar Google Apps Script bisa membaca payload-nya
+                    // Pakai mode no-cors untuk menerobos sistem blokir keamanan browser
                     fetch(GOOGLE_SHEETS_API_URL, {
                         method: 'POST',
                         mode: 'no-cors', 
@@ -222,8 +226,8 @@
             
             showToast("Menyinkronkan...", "Menarik data absensi dari seluruh karyawan dari server...");
             
-            await saveData(); // Dorong yang belum masuk
-            await loadData(); // Tarik yang baru
+            await saveData(); 
+            await loadData(); 
             render();
             
             showToast("Berhasil", "Data Anda sekarang 100% tersinkron!");
@@ -265,7 +269,8 @@
             const pin = document.getElementById('login-pin').value;
             if(!pin) return showToast("Gagal", "Silakan masukkan PIN/Password!", "warning");
 
-            const user = appState.employees.find(e => e.password === pin);
+            // Filter agar tidak bisa login menggunakan akun yang sudah di-soft-delete
+            const user = appState.employees.find(e => e.password === pin && !e.isDeleted);
             if(user) {
                 appState.currentUser = user;
                 document.getElementById('login-pin').value = '';
@@ -323,24 +328,36 @@
 
         function renderDashboard(container) {
             const isKaryawan = appState.currentUser.role === 'karyawan';
-            const listKaryawanOnly = appState.employees.filter(e => e.role !== 'admin');
+            
+            // Hanya ambil karyawan yang TIDAK DIHAPUS
+            const listKaryawanOnly = appState.employees.filter(e => e.role !== 'admin' && !e.isDeleted);
             const totalEmp = listKaryawanOnly.length;
-            const hadirToday = appState.attendances.filter(a => a.date === TGL_HARI_INI).length;
-            const tidakHadirToday = totalEmp - hadirToday; 
+            
+            // Validasi kehadiran (hanya hitung dari karyawan yang masih aktif)
+            const validAttendances = appState.attendances.filter(a => {
+                let emp = appState.employees.find(e => e.id === a.empId);
+                return emp && !emp.isDeleted;
+            });
+            const hadirTodayCount = validAttendances.filter(a => a.date === TGL_HARI_INI).length;
+            const tidakHadirToday = totalEmp - hadirTodayCount; 
 
             if(!isKaryawan) {
-                let pendingIzin = appState.leaves.filter(l => l.status === 'Pending').length;
+                let pendingIzin = appState.leaves.filter(l => l.status === 'Pending' && !l.isDeleted).length;
                 if(pendingIzin > 0) setTimeout(() => showToast("Pemberitahuan", `Terdapat ${pendingIzin} pengajuan izin baru yang menunggu persetujuan Anda!`, "warning"), 500);
             }
 
-            const tableRows = listKaryawanOnly.map(emp => {
-                let att = appState.attendances.find(a => a.empId === emp.id && a.date === TGL_HARI_INI);
+            // PRIVASI: Jika Karyawan, tabel hanya akan berisi dirinya sendiri. Jika Admin, tampilkan semua karyawan aktif.
+            const displayEmployees = isKaryawan 
+                ? listKaryawanOnly.filter(e => e.id === appState.currentUser.id) 
+                : listKaryawanOnly;
+
+            const tableRows = displayEmployees.map(emp => {
+                let att = validAttendances.find(a => a.empId === emp.id && a.date === TGL_HARI_INI);
                 let shiftName = att ? att.shift : '-';
                 let inTime = att && att.clockIn ? `<span class="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-black shadow-sm break-keep">${att.clockIn}</span>` : '-';
                 let outTime = att && att.clockOut ? `<span class="bg-slate-200 text-slate-800 px-2 py-1 rounded text-xs font-black shadow-sm break-keep">${att.clockOut}</span>` : '-';
                 let statBadge = att ? `<span class="text-[10px] font-bold px-2 py-0.5 rounded break-keep ${att.status==='Terlambat'?'bg-red-100 text-red-600':'bg-emerald-100 text-emerald-600'}">${att.status}</span>` : `<span class="text-xs text-slate-400 font-medium">Belum Hadir</span>`;
                 
-                // Efek Hover Pointer dan Pop-up Gambar Besar
                 let photoInHTML = att && att.photoIn ? `<img src="${att.photoIn}" onclick="openPhotoModal('${att.photoIn}')" class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg object-cover border shadow-sm cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all hover:scale-110" title="Klik untuk perbesar">` : '-';
                 let photoOutHTML = att && att.photoOut ? `<img src="${att.photoOut}" onclick="openPhotoModal('${att.photoOut}')" class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg object-cover border shadow-sm cursor-pointer hover:ring-2 hover:ring-blue-500 transition-all hover:scale-110" title="Klik untuk perbesar">` : '-';
 
@@ -365,8 +382,8 @@
                     
                     ${!isKaryawan ? `
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-                        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center gap-4"><div class="p-3 sm:p-4 rounded-xl bg-blue-50 text-blue-600"><i data-lucide="users" class="w-6 h-6 sm:w-8 sm:h-8"></i></div><div><p class="text-xs sm:text-sm font-bold text-slate-500">Total Karyawan</p><p class="text-2xl sm:text-3xl font-black text-slate-800">${totalEmp}</p></div></div>
-                        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center gap-4"><div class="p-3 sm:p-4 rounded-xl bg-emerald-50 text-emerald-600"><i data-lucide="user-check" class="w-6 h-6 sm:w-8 sm:h-8"></i></div><div><p class="text-xs sm:text-sm font-bold text-slate-500">Hadir Hari Ini</p><p class="text-2xl sm:text-3xl font-black text-slate-800">${hadirToday}</p></div></div>
+                        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center gap-4"><div class="p-3 sm:p-4 rounded-xl bg-blue-50 text-blue-600"><i data-lucide="users" class="w-6 h-6 sm:w-8 sm:h-8"></i></div><div><p class="text-xs sm:text-sm font-bold text-slate-500">Karyawan Aktif</p><p class="text-2xl sm:text-3xl font-black text-slate-800">${totalEmp}</p></div></div>
+                        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center gap-4"><div class="p-3 sm:p-4 rounded-xl bg-emerald-50 text-emerald-600"><i data-lucide="user-check" class="w-6 h-6 sm:w-8 sm:h-8"></i></div><div><p class="text-xs sm:text-sm font-bold text-slate-500">Hadir Hari Ini</p><p class="text-2xl sm:text-3xl font-black text-slate-800">${hadirTodayCount}</p></div></div>
                         <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex items-center gap-4"><div class="p-3 sm:p-4 rounded-xl bg-red-50 text-red-600"><i data-lucide="user-minus" class="w-6 h-6 sm:w-8 sm:h-8"></i></div><div><p class="text-xs sm:text-sm font-bold text-slate-500">Karyawan Tidak Hadir</p><p class="text-2xl sm:text-3xl font-black text-slate-800">${tidakHadirToday}</p></div></div>
                     </div>` : ''}
 
@@ -379,14 +396,14 @@
 
                     ${isKaryawan ? `
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mt-4 sm:mt-6">
-                        <div class="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-sm"><h3 class="text-base sm:text-lg font-bold text-slate-800 flex items-center gap-2 mb-3 sm:mb-4"><i data-lucide="clock" class="text-blue-600 w-5 h-5"></i> Lembur (Bulan Ini)</h3><div class="text-3xl sm:text-4xl font-black text-blue-600">${appState.overtimes.filter(o => o.empId === appState.currentUser.id && o.status === 'Disetujui').reduce((sum, o) => sum + o.durationMins, 0)} <span class="text-xs sm:text-sm font-bold text-slate-500">Menit</span></div><p class="text-[10px] sm:text-xs text-slate-500 mt-2">Total durasi lembur yang telah disetujui HRD.</p></div>
+                        <div class="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-sm"><h3 class="text-base sm:text-lg font-bold text-slate-800 flex items-center gap-2 mb-3 sm:mb-4"><i data-lucide="clock" class="text-blue-600 w-5 h-5"></i> Lembur (Bulan Ini)</h3><div class="text-3xl sm:text-4xl font-black text-blue-600">${appState.overtimes.filter(o => o.empId === appState.currentUser.id && o.status === 'Disetujui' && !o.isDeleted).reduce((sum, o) => sum + o.durationMins, 0)} <span class="text-xs sm:text-sm font-bold text-slate-500">Menit</span></div><p class="text-[10px] sm:text-xs text-slate-500 mt-2">Total durasi lembur yang telah disetujui HRD.</p></div>
                         <div class="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-sm"><h3 class="text-base sm:text-lg font-bold text-slate-800 flex items-center gap-2 mb-3 sm:mb-4"><i data-lucide="calendar" class="text-blue-600 w-5 h-5"></i> Jadwal Shift Saya</h3><div class="overflow-y-auto max-h-32 sm:max-h-40 custom-scrollbar border border-slate-100 rounded-xl"><table class="w-full text-xs sm:text-sm text-left"><thead class="bg-slate-50 font-bold sticky top-0 border-b border-slate-100"><tr><th class="p-2 sm:p-3">Tanggal</th><th class="p-2 sm:p-3">Shift</th></tr></thead><tbody>${appState.schedules.filter(s => s.empId === appState.currentUser.id && s.date.startsWith(TGL_HARI_INI.substring(0, 7))).map(sch => { let shiftName = appState.shifts.find(s => s.id === sch.shiftId)?.name || 'Default'; if (sch.shiftId === 'OFF') shiftName = '<span class="text-red-500 font-bold">LIBUR (OFF)</span>'; return `<tr class="border-b border-slate-50 hover:bg-slate-50"><td class="p-2 sm:p-3">${sch.date}</td><td class="p-2 sm:p-3">${shiftName}</td></tr>`; }).join('') || '<tr><td colspan="2" class="p-3 text-slate-500 text-center">Belum ada jadwal.</td></tr>'}</tbody></table></div></div>
                     </div>` : ''}
 
-                    <!-- Tabel Riwayat (Tombol Sync Tersedia Untuk Semua) -->
                     <div class="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-200 mt-6 sm:mt-8 w-full">
                         <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
-                            <h3 class="text-base sm:text-lg font-bold text-slate-800 flex items-center gap-2"><i data-lucide="list-checks" class="text-blue-600 w-5 h-5"></i> Riwayat Absensi Hari Ini</h3>
+                            <!-- PRIVASI: Ubah judul tabel bagi karyawan -->
+                            <h3 class="text-base sm:text-lg font-bold text-slate-800 flex items-center gap-2"><i data-lucide="list-checks" class="text-blue-600 w-5 h-5"></i> ${isKaryawan ? 'Riwayat Absensi Saya Hari Ini' : 'Riwayat Absensi Karyawan Hari Ini'}</h3>
                             <div class="flex gap-2 items-center self-start sm:self-auto">
                                 <span class="text-[10px] sm:text-xs font-bold bg-slate-100 px-3 py-1 rounded-full text-slate-600">${TGL_HARI_INI}</span>
                                 <button onclick="syncDataManual()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-[10px] sm:text-xs font-bold transition-colors shadow-md flex items-center gap-1.5"><i data-lucide="refresh-cw" class="w-3 h-3 sm:w-4 sm:h-4"></i> Sync Data</button>
@@ -418,16 +435,18 @@
             if (isKaryawan) {
                 let myMonth = TGL_HARI_INI.substring(0, 7);
                 let myAtt = appState.attendances.filter(a => a.empId === appState.currentUser.id && a.date.startsWith(myMonth));
-                let myLeaves = appState.leaves.filter(l => l.empId === appState.currentUser.id && l.date.startsWith(myMonth) && l.status === 'Disetujui');
+                let myLeaves = appState.leaves.filter(l => l.empId === appState.currentUser.id && l.date.startsWith(myMonth) && l.status === 'Disetujui' && !l.isDeleted);
                 let tepat = myAtt.filter(a => a.status === 'Tepat Waktu').length; let telat = myAtt.filter(a => a.status === 'Terlambat').length; let izin = myLeaves.length;
                 window.myChart = new Chart(ctx, { type: 'doughnut', data: { labels: ['Tepat Waktu', 'Terlambat', 'Izin/Cuti'], datasets: [{ data: [tepat, telat, izin], backgroundColor: ['#10b981', '#f59e0b', '#ef4444'], borderWidth: 0, hoverOffset: 4 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { boxWidth: 12, font: { size: 10 } } } }, cutout: '70%' } });
             } else {
                 let dates = []; let hadirData = []; let tidakHadirData = [];
-                let totalEmp = appState.employees.filter(e => e.role !== 'admin').length;
+                let totalEmp = appState.employees.filter(e => e.role !== 'admin' && !e.isDeleted).length;
                 for(let i=4; i>=0; i--) {
                     let d = new Date(); d.setDate(d.getDate() - i);
                     let dStr = d.toISOString().split('T')[0]; dates.push(dStr.substring(5)); 
-                    let hCount = appState.attendances.filter(a => a.date === dStr).length;
+                    
+                    // Filter kehadiran, abaikan absen dari karyawan yang sudah dihapus
+                    let hCount = appState.attendances.filter(a => a.date === dStr && !appState.employees.find(e=>e.id===a.empId)?.isDeleted).length;
                     hadirData.push(hCount); tidakHadirData.push(totalEmp - hCount);
                 }
                 window.myChart = new Chart(ctx, { type: 'bar', data: { labels: dates, datasets: [{ label: 'Hadir', data: hadirData, backgroundColor: '#3b82f6', borderRadius: 4 }, { label: 'Tidak Hadir/Izin', data: tidakHadirData, backgroundColor: '#cbd5e1', borderRadius: 4 }] }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { ticks: { font: { size: 10 } } }, y: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 10 } } } } } });
@@ -591,7 +610,6 @@
             const canvas = document.getElementById('canvas-capture');
             
             if (video && !video.classList.contains('hidden')) {
-                // KOMPRESI OTOMATIS: Turunkan resolusi agar pengiriman ke server cepat dan aman
                 const MAX_WIDTH = 250; 
                 const scaleSize = MAX_WIDTH / video.videoWidth;
                 canvas.width = MAX_WIDTH; 
@@ -628,15 +646,14 @@
             }
             
             closeModal();
-            // Panggil save secara sinkronus untuk memastikan nyangkut di server
             await saveData(); 
-            
             showToast("Sukses!", "Data absensi Anda berhasil TERSIMPAN di server.");
             render();
         }
 
         function renderKaryawan(container) {
-            let trs = appState.employees.filter(e => e.role !== 'admin').map((e,i) => `
+            // HANYA AMBIL KARYAWAN YANG BELUM DIHAPUS
+            let trs = appState.employees.filter(e => e.role !== 'admin' && !e.isDeleted).map((e,i) => `
                 <tr class="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                     <td class="p-3 sm:p-4 font-bold text-slate-800">${i+1}</td>
                     <td class="p-3 sm:p-4"><p class="font-bold text-slate-800 text-sm">${e.name}</p><p class="text-[10px] sm:text-xs text-slate-500">${e.phone}</p></td>
@@ -679,12 +696,21 @@
             else { appState.employees.push({ id: generateId(), name: name, position: pos, phone: phone, password: pass, role: 'karyawan' }); }
             closeModal(); saveData(); render(); showToast("Sukses", "Data Karyawan tersimpan.");
         }
-        window.hapusKaryawan = function(id) { appState.employees = appState.employees.filter(e => e.id !== id); saveData(); render(); }
+
+        // FUNGSI SOFT DELETE AGAR TIDAK MUNCUL LAGI SAAT DI SYNC!
+        window.hapusKaryawan = function(id) { 
+            let obj = appState.employees.find(e => e.id === id); 
+            if(obj) obj.isDeleted = true; 
+            saveData(); render(); showToast("Terhapus", "Data karyawan dihapus."); 
+        }
 
         window.jadwalBulan = window.jadwalBulan || TGL_HARI_INI.substring(0,7);
         function renderJadwal(container) {
             if(!appState.shifts.find(s=>s.id==='OFF')) appState.shifts.push({ id: 'OFF', name: 'LIBUR / OFF', start: '-', end: '-' });
-            const karyawans = appState.employees.filter(e => e.role !== 'admin');
+            
+            // HANYA AMBIL KARYAWAN YANG BELUM DIHAPUS
+            const karyawans = appState.employees.filter(e => e.role !== 'admin' && !e.isDeleted);
+            
             let trsToday = karyawans.map(e => {
                 let sch = appState.schedules.find(s => s.empId === e.id && s.date === TGL_HARI_INI);
                 let shiftName = sch ? (appState.shifts.find(s=>s.id===sch.shiftId)?.name || 'Default') : 'Belum Diatur';
@@ -697,8 +723,8 @@
             container.innerHTML = `
                 <div class="max-w-6xl mx-auto space-y-4 fade-in w-full">
                     <div class="bg-slate-900 p-4 rounded-2xl shadow-lg border border-slate-800 flex flex-col sm:flex-row justify-between sm:items-center gap-4 text-white"><h2 class="text-lg font-extrabold flex items-center gap-2"><i data-lucide="calendar-range" class="text-amber-500"></i> Manajemen Shift Bulanan</h2><input type="month" value="${window.jadwalBulan}" onchange="window.jadwalBulan=this.value; renderJadwal(document.getElementById('main-content'))" class="px-3 py-1.5 bg-slate-800 rounded border text-white font-bold outline-none text-sm w-full sm:w-auto"></div>
-                    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden w-full"><div class="overflow-x-auto custom-scrollbar"><table class="w-full text-left text-xs sm:text-sm whitespace-nowrap min-w-[300px]"><thead class="bg-slate-100 font-bold"><tr><th class="p-3">Daftar Karyawan</th><th class="p-3 text-right">Kalender</th></tr></thead><tbody>${trsMonth}</tbody></table></div></div>
-                    <div class="bg-white rounded-2xl shadow-sm border overflow-hidden w-full"><div class="p-4 bg-slate-50 border-b"><h2 class="text-base font-extrabold flex items-center gap-2">Shift Hari Ini (${TGL_HARI_INI})</h2></div><div class="overflow-x-auto custom-scrollbar"><table class="w-full text-left text-xs whitespace-nowrap min-w-[500px]"><thead class="bg-slate-100 font-bold"><tr><th class="p-3">Karyawan</th><th class="p-3">Shift Saat Ini</th><th class="p-3">Aksi</th></tr></thead><tbody>${trsToday}</tbody></table></div></div>
+                    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden w-full"><div class="overflow-x-auto custom-scrollbar"><table class="w-full text-left text-xs sm:text-sm whitespace-nowrap min-w-[300px]"><thead class="bg-slate-100 font-bold"><tr><th class="p-3">Daftar Karyawan</th><th class="p-3 text-right">Kalender</th></tr></thead><tbody>${trsMonth || '<tr><td colspan="2" class="p-4 text-center">Data Kosong</td></tr>'}</tbody></table></div></div>
+                    <div class="bg-white rounded-2xl shadow-sm border overflow-hidden w-full"><div class="p-4 bg-slate-50 border-b"><h2 class="text-base font-extrabold flex items-center gap-2">Shift Hari Ini (${TGL_HARI_INI})</h2></div><div class="overflow-x-auto custom-scrollbar"><table class="w-full text-left text-xs whitespace-nowrap min-w-[500px]"><thead class="bg-slate-100 font-bold"><tr><th class="p-3">Karyawan</th><th class="p-3">Shift Saat Ini</th><th class="p-3">Aksi</th></tr></thead><tbody>${trsToday || '<tr><td colspan="3" class="p-4 text-center">Data Kosong</td></tr>'}</tbody></table></div></div>
                 </div>
             `;
             lucide.createIcons();
@@ -752,26 +778,31 @@
 
         function renderIzin(container) {
             const isKaryawan = appState.currentUser.role === 'karyawan';
-            let dataIzin = isKaryawan ? appState.leaves.filter(l => l.empId === appState.currentUser.id) : appState.leaves;
+            
+            // Filter agar izin dari Karyawan yang dihapus juga hilang, Karyawan hanya bisa liat miliknya
+            let dataIzin = isKaryawan ? appState.leaves.filter(l => l.empId === appState.currentUser.id && !l.isDeleted) : appState.leaves.filter(l=>!l.isDeleted);
+            
             let trs = dataIzin.map(l => {
                 let emp = appState.employees.find(e=>e.id===l.empId);
                 let statClass = l.status==='Pending'?'bg-amber-100 text-amber-700':(l.status==='Disetujui'?'bg-emerald-100 text-emerald-700':'bg-red-100 text-red-700');
-                return `<tr class="border-b border-slate-100"><td class="p-3 text-xs font-bold">${emp?emp.name:'?'}</td><td class="p-3 text-xs">${l.date}</td><td class="p-3 text-xs">${l.reason}</td><td class="p-3"><span class="text-[10px] font-bold px-2 py-1 rounded ${statClass}">${l.status}</span></td><td class="p-3 whitespace-nowrap">${(!isKaryawan && l.status === 'Pending') ? `<button onclick="accIzin('${l.id}','Disetujui')" class="text-emerald-600 bg-emerald-50 p-1.5 rounded mr-1"><i data-lucide="check" class="w-4 h-4"></i></button><button onclick="accIzin('${l.id}','Ditolak')" class="text-red-600 bg-red-50 p-1.5 rounded"><i data-lucide="x" class="w-4 h-4"></i></button>` : (isKaryawan && l.status === 'Pending') ? `<button onclick="hapusIzin('${l.id}')" class="text-red-500 text-xs">Batal</button>` : '-'}</td></tr>`;
+                return `<tr class="border-b border-slate-100"><td class="p-3 text-xs font-bold">${emp?emp.name:'?'}</td><td class="p-3 text-xs">${l.date}</td><td class="p-3 text-xs">${l.reason}</td><td class="p-3"><span class="text-[10px] font-bold px-2 py-1 rounded ${statClass}">${l.status}</span></td><td class="p-3 whitespace-nowrap">${(!isKaryawan && l.status === 'Pending') ? `<button onclick="accIzin('${l.id}','Disetujui')" class="text-emerald-600 bg-emerald-50 p-1.5 rounded mr-1"><i data-lucide="check" class="w-4 h-4"></i></button><button onclick="accIzin('${l.id}','Ditolak')" class="text-red-600 bg-red-50 p-1.5 rounded"><i data-lucide="x" class="w-4 h-4"></i></button>` : (isKaryawan && l.status === 'Pending') ? `<button onclick="hapusIzin('${l.id}')" class="text-red-500 text-xs">Batal</button>` : (!isKaryawan && l.status !== 'Pending') ? `<button onclick="hapusIzin('${l.id}')" class="text-slate-400 hover:text-red-500 bg-slate-50 p-1.5 rounded"><i data-lucide="trash-2" class="w-4 h-4"></i></button>` : '-'}</td></tr>`;
             }).join('');
             container.innerHTML = `<div class="max-w-5xl mx-auto space-y-4 w-full"><div class="flex justify-between items-center bg-white p-4 rounded-2xl border"><h2 class="text-lg font-bold flex items-center gap-2"><i data-lucide="mail-warning" class="text-amber-500"></i> Pengajuan Cuti</h2>${isKaryawan ? `<button onclick="openFormIzin()" class="bg-amber-500 text-white px-4 py-2 rounded-xl text-xs font-bold">Buat Pengajuan</button>` : ''}</div><div class="bg-white rounded-2xl border overflow-hidden w-full"><div class="overflow-x-auto"><table class="w-full text-left text-sm min-w-[500px]"><thead class="bg-slate-100 font-bold"><tr><th class="p-3">Karyawan</th><th class="p-3">Tanggal</th><th class="p-3">Alasan</th><th class="p-3">Status</th><th class="p-3 w-24">Aksi</th></tr></thead><tbody>${trs||'<tr><td colspan="5" class="p-6 text-center text-slate-500">Belum ada data izin.</td></tr>'}</tbody></table></div></div></div>`;
             lucide.createIcons();
         }
+        
         window.openFormIzin = function() {
             document.getElementById('modal-root').innerHTML = `<div class="fixed inset-0 bg-slate-900/60 z-50 flex justify-center items-center p-4"><div class="bg-white rounded-2xl w-full max-w-sm"><div class="p-5 border-b font-bold bg-slate-50 flex justify-between">Form Izin <button onclick="closeModal()"><i data-lucide="x"></i></button></div><div class="p-6 space-y-4"><div><label class="text-xs font-bold mb-1">Tanggal</label><input type="date" id="iz-tgl" value="${TGL_HARI_INI}" class="w-full p-3 border rounded-xl"></div><div><label class="text-xs font-bold mb-1">Alasan</label><input type="text" id="iz-ket" class="w-full p-3 border rounded-xl"></div><button onclick="saveIzin()" class="w-full bg-amber-500 text-white font-bold py-3 rounded-xl">Kirim</button></div></div></div>`;
             lucide.createIcons();
         }
         window.saveIzin = function() { let t = document.getElementById('iz-tgl').value; let k = document.getElementById('iz-ket').value; if(!t||!k) return alert("Lengkapi data!"); appState.leaves.push({ id: generateId(), empId: appState.currentUser.id, date: t, reason: k, status: 'Pending' }); closeModal(); saveData(); render(); }
         window.accIzin = function(id, stat) { appState.leaves.find(l=>l.id===id).status = stat; saveData(); render(); }
-        window.hapusIzin = function(id) { appState.leaves = appState.leaves.filter(l=>l.id!==id); saveData(); render(); }
+        
+        window.hapusIzin = function(id) { let obj = appState.leaves.find(l=>l.id===id); if(obj) obj.isDeleted = true; saveData(); render(); }
 
         function renderLembur(container) {
             const isAdmin = appState.currentUser.role === 'admin';
-            let dataLembur = isAdmin ? appState.overtimes : appState.overtimes.filter(o => o.empId === appState.currentUser.id);
+            let dataLembur = isAdmin ? appState.overtimes.filter(o => !o.isDeleted) : appState.overtimes.filter(o => o.empId === appState.currentUser.id && !o.isDeleted);
             let trs = dataLembur.map(o => {
                 let emp = appState.employees.find(e=>e.id===o.empId);
                 let statClass = o.status==='Pending'?'bg-amber-100 text-amber-700':(o.status==='Disetujui'?'bg-emerald-100 text-emerald-700':'bg-red-100 text-red-700');
@@ -781,11 +812,12 @@
             lucide.createIcons();
         }
         window.accLembur = function(id, stat) { appState.overtimes.find(o=>o.id===id).status = stat; saveData(); render(); }
-        window.hapusLembur = function(id) { appState.overtimes = appState.overtimes.filter(o => o.id !== id); saveData(); render(); }
+        
+        window.hapusLembur = function(id) { let obj = appState.overtimes.find(o => o.id === id); if(obj) obj.isDeleted = true; saveData(); render(); }
 
         function renderGaji(container) {
             const isKaryawan = appState.currentUser.role === 'karyawan';
-            let dataGaji = isKaryawan ? appState.payrolls.filter(p => p.empId === appState.currentUser.id) : appState.payrolls;
+            let dataGaji = isKaryawan ? appState.payrolls.filter(p => p.empId === appState.currentUser.id && !p.isDeleted) : appState.payrolls.filter(p=>!p.isDeleted);
             let trs = dataGaji.map(p => {
                 let emp = appState.employees.find(e=>e.id===p.empId);
                 return `<tr class="border-b border-slate-100"><td class="p-3"><p class="font-bold text-xs">${emp?emp.name:'?'}</p><p class="text-[9px] text-slate-500">Periode: ${p.period}</p></td><td class="p-3 text-[10px] font-bold text-slate-600">Kerja: ${p.workDays}h | Lbr: ${p.offDays}h<br>Izin: ${p.leaveDays}h | Ovrtm: ${p.overtimeHours}j</td><td class="p-3 font-black text-emerald-700"><span class="bg-emerald-50 px-2 py-1 rounded">${formatRp(p.total)}</span></td><td class="p-3 flex gap-1"><button onclick="printSlip('${p.id}')" class="text-blue-700 bg-blue-100 p-1.5 rounded"><i data-lucide="printer" class="w-3 h-3"></i></button><button onclick="downloadPDF('${p.id}')" class="text-emerald-700 bg-emerald-100 p-1.5 rounded"><i data-lucide="download" class="w-3 h-3"></i></button>${!isKaryawan ? `<button onclick="openFormGaji('${p.id}')" class="text-amber-700 bg-amber-100 p-1.5 rounded"><i data-lucide="edit" class="w-3 h-3"></i></button><button onclick="hapusGaji('${p.id}')" class="text-red-700 bg-red-100 p-1.5 rounded"><i data-lucide="trash-2" class="w-3 h-3"></i></button>` : ''}</td></tr>`;
@@ -796,13 +828,13 @@
 
         window.openFormGaji = function(id=null) {
             let p = id ? appState.payrolls.find(x=>x.id===id) : null;
-            let opt = appState.employees.filter(e=>e.role!=='admin').map(e => `<option value="${e.id}" ${p&&p.empId===e.id?'selected':''}>${e.name}</option>`).join('');
+            let opt = appState.employees.filter(e=>e.role!=='admin' && !e.isDeleted).map(e => `<option value="${e.id}" ${p&&p.empId===e.id?'selected':''}>${e.name}</option>`).join('');
             document.getElementById('modal-root').innerHTML = `<div class="fixed inset-0 bg-slate-900/60 z-50 flex justify-center items-center p-2"><div class="bg-white rounded-2xl w-full max-w-lg shadow-2xl flex flex-col max-h-[90vh]"><div class="p-4 border-b font-bold bg-slate-50 flex justify-between">Input Gaji <button onclick="closeModal()"><i data-lucide="x"></i></button></div><form onsubmit="saveGaji(event)" class="p-4 space-y-4 overflow-y-auto"><input type="hidden" id="gj-id" value="${p?p.id:''}"><select id="gj-emp" required onchange="autoFillGaji(this.value)" class="w-full p-2.5 bg-slate-50 border rounded-xl font-bold text-sm"><option value="" disabled ${!p?'selected':''}>-- Pilih --</option>${opt}</select><div class="grid grid-cols-2 gap-3 border-t pt-3"><div><label class="block text-[10px] font-bold">Gaji Pokok</label><input type="number" id="gj-pokok" value="${p?p.basic:''}" required class="w-full p-2.5 bg-slate-50 border rounded-xl font-bold text-sm"></div><div><label class="block text-[10px] font-bold">Upah Lembur/Jam</label><input type="number" id="gj-uplem" value="${p?p.rateOvr:'20000'}" required class="w-full p-2.5 bg-slate-50 border rounded-xl font-bold text-sm"></div><div><label class="block text-[10px] font-bold">Hari Kerja</label><input type="number" id="gj-kerja" value="${p?p.workDays:''}" required class="w-full p-2.5 bg-slate-50 border rounded-xl font-bold text-sm"></div><div><label class="block text-[10px] font-bold">Hari Libur</label><input type="number" id="gj-libur" value="${p?p.offDays:'4'}" required class="w-full p-2.5 bg-slate-50 border rounded-xl font-bold text-sm"></div><div><label class="block text-[10px] font-bold">Jam Lembur</label><input type="number" step="0.01" id="gj-lembur" value="${p?p.overtimeHours:'0'}" required class="w-full p-2.5 bg-blue-50 border-blue-200 text-blue-700 rounded-xl font-bold text-sm"></div><div><label class="block text-[10px] font-bold">Hari Izin</label><input type="number" id="gj-izin" value="${p?p.leaveDays:'0'}" required class="w-full p-2.5 bg-slate-50 border rounded-xl font-bold text-sm"></div></div><button type="submit" class="w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl">Simpan Laporan</button></form></div></div>`;
             lucide.createIcons();
         }
         window.autoFillGaji = function(empId) {
             let hadir = appState.attendances.filter(a => a.empId === empId).length;
-            let ovr = appState.overtimes.filter(o => o.empId === empId && o.status === 'Disetujui');
+            let ovr = appState.overtimes.filter(o => o.empId === empId && o.status === 'Disetujui' && !o.isDeleted);
             document.getElementById('gj-kerja').value = hadir; document.getElementById('gj-lembur').value = (ovr.reduce((sum, o) => sum + o.durationMins, 0) / 60).toFixed(2);
         }
         window.saveGaji = function(e) {
@@ -812,7 +844,7 @@
             if(editId) { Object.assign(appState.payrolls.find(x=>x.id===editId), obj); } else { obj.id = generateId(); appState.payrolls.push(obj); }
             closeModal(); saveData(); render();
         }
-        window.hapusGaji = function(id) { appState.payrolls = appState.payrolls.filter(p=>p.id!==id); saveData(); render(); }
+        window.hapusGaji = function(id) { let obj = appState.payrolls.find(p=>p.id===id); if(obj) obj.isDeleted = true; saveData(); render(); }
 
         window.getSlipHTML = function(id) {
             let p = appState.payrolls.find(x => x.id === id); let emp = appState.employees.find(e => e.id === p.empId);
@@ -828,7 +860,7 @@
         function renderPengaturan(container) {
             const isAdmin = appState.currentUser.role === 'admin';
             if (isAdmin) {
-                let pwdList = appState.employees.filter(e => e.role !== 'admin').map(e => `<div class="flex justify-between p-3 border-b hover:bg-slate-50 gap-2"><div><p class="font-bold text-sm">${e.name}</p></div><div class="flex items-center gap-2"><input type="text" value="${e.password}" id="pwd-${e.id}" class="w-32 px-3 py-1.5 text-sm bg-slate-100 border rounded font-mono"><button onclick="simpanPwd('${e.id}')" class="bg-slate-800 text-white p-1.5 rounded hover:bg-black"><i data-lucide="save" class="w-4 h-4"></i></button></div></div>`).join('');
+                let pwdList = appState.employees.filter(e => e.role !== 'admin' && !e.isDeleted).map(e => `<div class="flex justify-between p-3 border-b hover:bg-slate-50 gap-2"><div><p class="font-bold text-sm">${e.name}</p></div><div class="flex items-center gap-2"><input type="text" value="${e.password}" id="pwd-${e.id}" class="w-32 px-3 py-1.5 text-sm bg-slate-100 border rounded font-mono"><button onclick="simpanPwd('${e.id}')" class="bg-slate-800 text-white p-1.5 rounded hover:bg-black"><i data-lucide="save" class="w-4 h-4"></i></button></div></div>`).join('');
                 container.innerHTML = `<div class="max-w-4xl mx-auto space-y-4 w-full"><div class="bg-white p-4 sm:p-6 rounded-2xl border shadow-sm"><h2 class="text-lg font-extrabold flex items-center gap-2 mb-4"><i data-lucide="settings" class="text-blue-600"></i> Konfigurasi Sistem</h2><div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6"><div class="col-span-full md:col-span-1 p-4 bg-blue-50 rounded-xl border border-blue-200"><label class="block text-xs font-bold text-blue-800 mb-2">Nama Perusahaan</label><input type="text" id="set-comp" value="${appState.settings.companyName}" class="w-full p-2.5 bg-white border border-blue-200 rounded-lg font-black text-base outline-none"></div><div class="col-span-full md:col-span-1 p-4 bg-red-50 rounded-xl border border-red-200"><label class="block text-xs font-bold text-red-800 mb-2">Password Admin</label><input type="text" id="set-admin-pwd" value="${appState.employees.find(e => e.role === 'admin').password}" class="w-full p-2.5 bg-white border border-red-200 rounded-lg font-black text-base outline-none"></div><div class="p-4 bg-slate-50 rounded-xl border border-slate-200"><label class="block text-xs font-bold text-slate-600 mb-2">Batas Toleransi Telat (Menit)</label><input type="number" id="set-tol" value="${appState.settings.lateTolerance}" class="w-full p-2.5 bg-white border border-slate-200 rounded-lg font-black text-base outline-none"></div><div class="p-4 bg-slate-50 rounded-xl border border-slate-200"><label class="block text-xs font-bold text-slate-600 mb-2">Batas Radius Absen (Meter)</label><input type="number" id="set-rad" value="${appState.settings.radiusLimit}" class="w-full p-2.5 bg-white border border-slate-200 rounded-lg font-black text-base outline-none"></div><div class="col-span-full"><button onclick="simpanPengaturan()" class="w-full bg-blue-600 text-white font-bold py-3 rounded-xl shadow-md">Simpan Konfigurasi</button></div></div><h3 class="font-bold text-base mb-4 border-b pb-2">Manajemen Password Karyawan</h3><div class="bg-white border rounded-xl overflow-hidden">${pwdList || '<p class="p-4 text-center text-sm">Tidak ada karyawan</p>'}</div></div></div>`;
             } else {
                 container.innerHTML = `<div class="max-w-md mx-auto space-y-4 mt-4 w-full"><div class="bg-white p-6 rounded-3xl border shadow-sm text-center"><div class="w-14 h-14 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4"><i data-lucide="shield-check" class="w-7 h-7"></i></div><h2 class="text-lg font-extrabold text-slate-800">Keamanan Akun</h2><p class="text-xs text-slate-500 mb-6">Kelola kata sandi akses pribadi Anda.</p><div class="text-left space-y-4"><div><label class="block text-xs font-bold text-slate-700 mb-2">Password Baru Anda</label><input type="text" id="my-new-pwd" value="${appState.currentUser.password}" class="w-full p-3.5 bg-slate-50 border rounded-xl font-bold outline-none"></div><button onclick="simpanPwdKaryawan()" class="w-full bg-blue-600 text-white font-black py-3.5 rounded-xl shadow-md">PERBARUI PASSWORD</button></div></div></div>`;
