@@ -53,6 +53,7 @@
 
         window.showToast = function(message, type = 'success') {
             const container = document.getElementById('toast-container');
+            if(!container) return;
             const toast = document.createElement('div');
             let bgClass = type === 'success' ? 'bg-emerald-500' : (type === 'error' ? 'bg-rose-500' : (type === 'warning' ? 'bg-amber-500' : 'bg-blue-500'));
             toast.className = `${bgClass} text-white px-4 py-3 rounded-xl shadow-lg flex items-center gap-3 slide-up pointer-events-auto`;
@@ -92,7 +93,6 @@
         };
 
         window.hitungLembur = function(clockIn, clockOut, shiftStart, shiftEnd) {
-            // Lembur HANYA dihitung berdasarkan Jam Pulang yang melewati Jam Berakhir Shift.
             if (!clockOut || clockOut === '-' || clockOut === '--:--' || !shiftEnd || shiftEnd === '-' || shiftEnd === '--:--') return 0;
             try {
                 let outTime = String(clockOut).trim().replace('.', ':');
@@ -104,7 +104,6 @@
                 let outMins = parseInt(outParts[0]||0) * 60 + parseInt(outParts[1]||0);
                 let seMins = parseInt(seParts[0]||0) * 60 + parseInt(seParts[1]||0);
                 
-                // Jika shift melewati tengah malam
                 if (seMins < 12 * 60 && outMins > 12 * 60) {
                     seMins += 24 * 60;
                 }
@@ -113,7 +112,7 @@
                 }
 
                 if (outMins > seMins) {
-                    return outMins - seMins; // Selisih menit murni dari jam pulang lewat shift
+                    return outMins - seMins; 
                 }
                 
                 return 0; 
@@ -122,8 +121,31 @@
 
         window.formatDateStandard = function(dateInput) {
             if(!dateInput) return "";
+            
+            if (dateInput instanceof Date) {
+                if(isNaN(dateInput.getTime())) return "";
+                let dYear = dateInput.getFullYear();
+                let dMonth = String(dateInput.getMonth() + 1).padStart(2, '0');
+                let dDay = String(dateInput.getDate()).padStart(2, '0');
+                return `${dYear}-${dMonth}-${dDay}`;
+            }
+
             let str = String(dateInput).trim().replace(/'/g, ''); 
-            if(str.includes('T')) str = str.split('T')[0];
+            
+            if (str.includes('T') && str.endsWith('Z')) {
+                let d = new Date(str);
+                if(!isNaN(d.getTime())) {
+                    let dYear = d.getFullYear();
+                    let dMonth = String(d.getMonth() + 1).padStart(2, '0');
+                    let dDay = String(d.getDate()).padStart(2, '0');
+                    return `${dYear}-${dMonth}-${dDay}`;
+                }
+            }
+            
+            if (str.includes('T')) str = str.split('T')[0];
+            if (str.includes(' ')) str = str.split(' ')[0];
+            
+            if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
             
             if(str.includes('/')) {
                 let parts = str.split('/');
@@ -148,6 +170,7 @@
                 let dDay = String(d.getDate()).padStart(2, '0');
                 return `${dYear}-${dMonth}-${dDay}`;
             }
+            
             return str;
         };
 
@@ -157,62 +180,147 @@
             if(btnSync) btnSync.classList.add('animate-spin');
 
             try {
-                const response = await fetch(DB_URL + '?nocache=' + new Date().getTime(), { cache: 'no-store' });
+                const response = await fetch(DB_URL + '?action=get_data&nocache=' + new Date().getTime());
                 const cloudData = await response.json();
                 
                 if(cloudData.error) throw new Error(cloudData.error);
                 
-                if (cloudData.employees && cloudData.employees.length > 0) window.appState.employees = cloudData.employees;
+                const lowerKeys = (obj) => {
+                    let res = {};
+                    for(let k in obj) { if(k) res[String(k).toLowerCase().trim()] = obj[k]; }
+                    return res;
+                };
+
+                if (cloudData.employees && cloudData.employees.length > 0) {
+                    window.appState.employees = cloudData.employees.map(raw => {
+                        let e = lowerKeys(raw);
+                        return {
+                            id: String(e.id || e.id_user || '').trim(),
+                            name: e.name || e.nama || e.nama_lengkap || 'Tanpa Nama',
+                            position: e.position || e.jabatan || 'Staff',
+                            username: e.username || e.user || '',
+                            password: e.password || e.pin || e.sandi || '',
+                            role: String(e.role || e.peran || 'staff').toLowerCase(),
+                            isDeleted: e.isdeleted || e.is_deleted || false
+                        };
+                    }).filter(e => e.id !== ''); 
+                    
+                    if(!window.appState.employees.find(e => String(e.id).toUpperCase() === 'ADMIN')) {
+                        window.appState.employees.push({ id: 'ADMIN', name: 'Administrator', username: 'admin', position: 'Admin Utama', password: 'admin', role: 'admin', isDeleted: false });
+                    }
+                }
+                
                 if (cloudData.settings) window.appState.settings = { ...window.appState.settings, ...cloudData.settings };
                 
                 if (cloudData.leaves) {
-                    window.appState.leaves = cloudData.leaves.map(l => ({...l, date: window.formatDateStandard(l.date)}));
+                    window.appState.leaves = cloudData.leaves.map(raw => {
+                        let l = lowerKeys(raw);
+                        let rawDate = l.date || l.tanggal || '';
+                        let rawEmpId = l.empid || l.id_user || '';
+                        return {
+                            ...l, 
+                            date: window.formatDateStandard(rawDate), 
+                            empId: String(rawEmpId).trim().toUpperCase(),
+                            type: l.type || l.jenis || l.jenis_izin || '',
+                            reason: l.reason || l.keterangan || l.alasan || '',
+                            status: l.status || 'Pending'
+                        };
+                    });
                 }
                 
-                if (cloudData.shifts && cloudData.shifts.length > 0) window.appState.shifts = cloudData.shifts;
+                if (cloudData.shifts && cloudData.shifts.length > 0) {
+                    window.appState.shifts = cloudData.shifts.map(raw => {
+                        let s = lowerKeys(raw);
+                        return {
+                            id: String(s.id_shift || s.shift || s.id || '').trim().toUpperCase(),
+                            name: s.nama_shift || s.nama || s.name || '',
+                            startTime: String(s.jam_masuk || s.start || s.starttime || s.masuk || '').trim(),
+                            endTime: String(s.jam_pulang || s.end || s.endtime || s.pulang || '').trim()
+                        };
+                    });
+                }
                 
                 if (cloudData.schedules && cloudData.schedules.length > 0) {
-                    window.appState.schedules = cloudData.schedules.map(s => {
-                        return { ...s, date: window.formatDateStandard(s.date), empId: String(s.empId).trim().toUpperCase(), shiftId: String(s.shiftId).trim().toUpperCase() };
+                    window.appState.schedules = cloudData.schedules.map(raw => {
+                        let s = lowerKeys(raw);
+                        let rawDate = s.date || s.tanggal || '';
+                        let rawEmpId = s.id_user || s.empid || s.user || s.id || '';
+                        let rawShiftId = s.id_shift || s.shiftid || s.shift || '';
+                        return { 
+                            id: String(s.id || s.id_jadwal || '').trim(),
+                            date: window.formatDateStandard(rawDate), 
+                            empId: String(rawEmpId).trim().toUpperCase(), 
+                            shiftId: String(rawShiftId).trim().toUpperCase() 
+                        };
                     });
                 }
                 
                 if (cloudData.attendances && cloudData.attendances.length > 0) {
-                    window.appState.attendances = cloudData.attendances.map(a => {
-                        return { ...a, date: window.formatDateStandard(a.date), empId: String(a.empId).trim().toUpperCase() };
+                    window.appState.attendances = cloudData.attendances.map(raw => {
+                        let a = lowerKeys(raw);
+                        let rawDate = a.date || a.tanggal || '';
+                        let rawEmpId = a.empid || a.id_user || '';
+                        let rIn = a.clockin || a.jam_masuk || '--:--';
+                        let rOut = a.clockout || a.jam_pulang || '--:--';
+                        let rPhotoIn = a.photoin || a.foto_masuk || a.foto || '-';
+                        let rPhotoOut = a.photoout || a.foto_pulang || '-';
+                        
+                        return { 
+                            id: String(a.id || a.id_absensi || '').trim(),
+                            date: window.formatDateStandard(rawDate), 
+                            empId: String(rawEmpId).trim().toUpperCase(),
+                            clockIn: rIn,
+                            clockOut: rOut,
+                            status: a.status || 'Hadir',
+                            photoIn: rPhotoIn,
+                            photoOut: rPhotoOut
+                        };
                     });
                 }
                 
                 window.renderApp();
+                
+                if (document.getElementById('kalender-grid') && typeof window.updateIsiKalender === 'function') {
+                    window.updateIsiKalender();
+                }
+                
                 if(isManual) window.showToast('Data berhasil disinkronisasi!', 'success');
                 
             } catch(e) { 
-                console.error("Sinkronisasi gagal", e);
-                window.showToast("Gagal mengambil data: " + e.message, "error");
+                console.warn("Catatan Sinkronisasi:", e.message);
+                if(isManual) window.showToast("Gagal mengambil data: " + e.message, "error");
             } finally {
                 if(btnSync) btnSync.classList.remove('animate-spin');
             }
-        }
+        };
 
         window.renderApp = function() {
             const appDiv = document.getElementById('app');
+            
+            // PENCEGAH BERKEDIP: Hanya merender ulang bagian login dari nol jika strukturnya belum ada di HTML
+            if (!window.appState.currentUser) {
+                if (!document.getElementById('pin-input')) {
+                    appDiv.innerHTML = ''; 
+                    renderLogin(appDiv);
+                    if(window.lucide) lucide.createIcons(); // PERBAIKAN: Render ikon sidik jari sebelum render dihentikan
+                }
+                return; // Menghentikan fungsi render agar login tidak me-refresh/berkedip saat syncData bekerja
+            }
+
             appDiv.innerHTML = ''; 
 
-            if (!window.appState.currentUser) {
-                renderLogin(appDiv);
-            } else {
-                const contentDiv = document.createElement('div');
-                contentDiv.id = 'main-content';
-                contentDiv.className = 'h-screen overflow-y-auto pb-20 no-scrollbar';
-                appDiv.appendChild(contentDiv);
+            const contentDiv = document.createElement('div');
+            contentDiv.id = 'main-content';
+            contentDiv.className = 'h-screen overflow-y-auto pb-20 no-scrollbar';
+            appDiv.appendChild(contentDiv);
 
-                if(currentTab === 'dashboard') renderDashboard(contentDiv);
-                else if(currentTab === 'rekap') renderRekap(contentDiv);
-                else if(currentTab === 'karyawan') renderKaryawan(contentDiv);
-                else if(currentTab === 'akun') renderAkun(contentDiv);
+            if(currentTab === 'dashboard') renderDashboard(contentDiv);
+            else if(currentTab === 'rekap') renderRekap(contentDiv);
+            else if(currentTab === 'karyawan') renderKaryawan(contentDiv);
+            else if(currentTab === 'akun') renderAkun(contentDiv);
 
-                renderBottomNav(appDiv);
-            }
+            renderBottomNav(appDiv);
+            
             if(window.lucide) lucide.createIcons();
         };
 
@@ -308,7 +416,6 @@
                 const myMonthAtt = window.appState.attendances.filter(a => String(a.empId).trim().toUpperCase() === String(user.id).trim().toUpperCase() && String(a.date).trim().startsWith(currentMonth));
                 countHadir = myMonthAtt.length;
 
-                // Penarikan Jadwal Akurat
                 let mySchedule = window.appState.schedules.find(s => String(s.empId).trim().toUpperCase() === String(user.id).trim().toUpperCase() && window.formatDateStandard(s.date) === todayStr);
                 if(mySchedule) {
                     let shiftData = window.appState.shifts.find(sh => String(sh.id).trim().toUpperCase() === String(mySchedule.shiftId).trim().toUpperCase());
@@ -319,7 +426,6 @@
                     }
                 }
 
-                // Hitung Lembur Total Sebulan (Murni pulang lewat jam shift)
                 let totalLemburMenit = 0;
                 myMonthAtt.forEach(att => {
                     if(att.clockOut && att.clockOut !== '-' && att.clockOut !== '--:--') {
@@ -332,7 +438,6 @@
                             let sh = window.appState.shifts.find(s => String(s.id).trim().toUpperCase() === String(sched.shiftId).trim().toUpperCase());
                             if(sh) { sStart = String(sh.startTime).trim(); sEnd = String(sh.endTime).trim(); isValidShift = true; }
                         }
-                        // Sistem HANYA hitung jika shift valid (Bebas Tebakan)
                         if (isValidShift) {
                             totalLemburMenit += window.hitungLembur(att.clockIn, att.clockOut, sStart, sEnd);
                         }
@@ -410,13 +515,16 @@
                          let j = Math.floor(totalMenitLemburEmp / 60);
                          let m = totalMenitLemburEmp % 60;
                          
+                         let safeName = emp.name || emp.nama_lengkap || emp.nama || 'Tanpa Nama';
+                         let safePos = emp.position || emp.jabatan || 'Staff';
+                         
                          return `
                          <div class="bg-indigo-50/50 p-3 rounded-xl border border-indigo-50 flex justify-between items-center hover:bg-indigo-50 transition mb-2">
                              <div class="flex items-center gap-3">
-                                 <div class="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center font-bold text-sm shadow-inner">${emp.name.charAt(0)}</div>
+                                 <div class="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center font-bold text-sm shadow-inner">${safeName.charAt(0)}</div>
                                  <div>
-                                     <h5 class="text-sm font-bold text-slate-800">${emp.name}</h5>
-                                     <p class="text-[10px] text-slate-500 font-medium">${emp.position}</p>
+                                     <h5 class="text-sm font-bold text-slate-800">${safeName}</h5>
+                                     <p class="text-[10px] text-slate-500 font-medium">${safePos}</p>
                                  </div>
                              </div>
                              <div class="text-right">
@@ -476,7 +584,7 @@
                             <button onclick="window.bukaKameraAbsen('in')" class="${(myAtt || myLeave) ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-emerald-500 text-white hover:bg-emerald-600 shadow-[0_8px_16px_rgba(16,185,129,0.3)]'} flex-1 font-bold py-3 md:py-4 rounded-xl transition-all active:scale-95 flex flex-col items-center justify-center gap-1" ${(myAtt || myLeave) ? 'disabled' : ''}>
                                 <i data-lucide="scan-face" class="w-5 h-5"></i><span class="text-[10px] md:text-xs uppercase tracking-wider">Absen Masuk</span>
                             </button>
-                            <button onclick="window.bukaKameraAbsen('out')" class="${(!myAtt || myAtt.clockOut) ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-rose-500 text-white hover:bg-rose-600 shadow-[0_8px_16px_rgba(244,63,94,0.3)]'} flex-1 font-bold py-3 md:py-4 rounded-xl transition-all active:scale-95 flex flex-col items-center justify-center gap-1" ${(!myAtt || myAtt.clockOut) ? 'disabled' : ''}>
+                            <button onclick="window.bukaKameraAbsen('out')" class="${(!myAtt || (myAtt.clockOut && myAtt.clockOut !== '-' && myAtt.clockOut !== '--:--')) ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-rose-500 text-white hover:bg-rose-600 shadow-[0_8px_16px_rgba(244,63,94,0.3)]'} flex-1 font-bold py-3 md:py-4 rounded-xl transition-all active:scale-95 flex flex-col items-center justify-center gap-1" ${(!myAtt || (myAtt.clockOut && myAtt.clockOut !== '-' && myAtt.clockOut !== '--:--')) ? 'disabled' : ''}>
                                 <i data-lucide="scan-face" class="w-5 h-5"></i><span class="text-[10px] md:text-xs uppercase tracking-wider">Absen Pulang</span>
                             </button>
                         </div>
@@ -536,10 +644,18 @@
         window.bukaKameraAbsen = function(type) {
             const user = window.appState.currentUser;
             const now = new Date();
-            const todayStr = window.formatDateStandard(now);
+            
+            const yyyy = now.getFullYear();
+            const mm = String(now.getMonth() + 1).padStart(2, '0');
+            const dd = String(now.getDate()).padStart(2, '0');
+            const todayStr = `${yyyy}-${mm}-${dd}`;
             
             if (user.role !== 'admin') {
-                let mySchedule = window.appState.schedules.find(s => String(s.empId).trim().toUpperCase() === String(user.id).trim().toUpperCase() && window.formatDateStandard(s.date) === todayStr);
+                let mySchedule = window.appState.schedules.find(s => 
+                    String(s.empId).trim().toUpperCase() === String(user.id).trim().toUpperCase() && 
+                    window.formatDateStandard(s.date) === todayStr
+                );
+                
                 if (!mySchedule) {
                     let modal = document.createElement('div');
                     modal.className = 'fixed inset-0 bg-slate-900/80 z-[120] flex items-center justify-center p-4 fade-in backdrop-blur-sm';
@@ -623,30 +739,40 @@
             tracker.setInitialScale(4); tracker.setStepSize(2); tracker.setEdgesDensity(0.1);
 
             window.trackerTask = tracking.track('#kamera-video', tracker);
+            window.lastFaceDetectTime = 0;
 
             tracker.on('track', function(event) {
                 context.clearRect(0, 0, canvas.width, canvas.height);
+                let now = Date.now();
                 let btn = document.getElementById('btn-capture');
                 let status = document.getElementById('kamera-status');
                 let frame = document.getElementById('scan-frame');
 
-                if (event.data.length === 0) {
-                    status.innerHTML = `<i data-lucide="scan-face" class="w-4 h-4 inline mb-1"></i> Wajah Tidak Ditemukan`;
-                    status.className = "text-rose-400 text-sm font-medium animate-pulse";
-                    btn.disabled = true; btn.className = "w-20 h-20 bg-white/50 rounded-full border-4 border-slate-500 flex items-center justify-center transition cursor-not-allowed";
-                    frame.className = "w-64 h-64 border-2 border-dashed border-rose-400 rounded-2xl relative";
-                } else {
-                    status.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4 inline mb-1"></i> Wajah Terdeteksi! Silakan Tekan Tombol`;
-                    status.className = "text-emerald-400 text-sm font-bold";
-                    btn.disabled = false; btn.className = "w-20 h-20 bg-white rounded-full border-4 border-emerald-300 flex items-center justify-center active:scale-90 transition shadow-[0_0_20px_rgba(16,185,129,0.5)] cursor-pointer";
-                    frame.className = "w-64 h-64 border-2 border-solid border-emerald-400 rounded-2xl relative shadow-[inset_0_0_20px_rgba(16,185,129,0.4)]";
-                    
+                if (event.data.length > 0) {
+                    window.lastFaceDetectTime = now;
                     event.data.forEach(function(rect) {
                         context.strokeStyle = '#10b981'; context.lineWidth = 2;
                         context.strokeRect(rect.x, rect.y, rect.width, rect.height);
                     });
                 }
-                if(window.lucide) lucide.createIcons();
+
+                if (now - window.lastFaceDetectTime < 1000) {
+                    if(btn.disabled) {
+                        status.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4 inline mb-1"></i> Wajah Terdeteksi! Silakan Tekan Tombol`;
+                        status.className = "text-emerald-400 text-sm font-bold";
+                        btn.disabled = false; btn.className = "w-20 h-20 bg-white rounded-full border-4 border-emerald-300 flex items-center justify-center active:scale-90 transition shadow-[0_0_20px_rgba(16,185,129,0.5)] cursor-pointer";
+                        frame.className = "w-64 h-64 border-2 border-solid border-emerald-400 rounded-2xl relative shadow-[inset_0_0_20px_rgba(16,185,129,0.4)]";
+                        if(window.lucide) lucide.createIcons();
+                    }
+                } else {
+                    if(!btn.disabled) {
+                        status.innerHTML = `<i data-lucide="scan-face" class="w-4 h-4 inline mb-1"></i> Wajah Tidak Ditemukan`;
+                        status.className = "text-rose-400 text-sm font-medium animate-pulse";
+                        btn.disabled = true; btn.className = "w-20 h-20 bg-white/50 rounded-full border-4 border-slate-500 flex items-center justify-center transition cursor-not-allowed";
+                        frame.className = "w-64 h-64 border-2 border-dashed border-rose-400 rounded-2xl relative";
+                        if(window.lucide) lucide.createIcons();
+                    }
+                }
             });
         };
 
@@ -683,6 +809,26 @@
             const timeStr = now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
 
             window.showToast("Mengirim data absensi ke Server...", "info");
+
+            if (type === 'in') {
+                window.appState.attendances.push({
+                    id: 'TEMP_' + Date.now(),
+                    date: dateStr,
+                    empId: user.id,
+                    clockIn: timeStr,
+                    clockOut: '-',
+                    status: 'Hadir',
+                    photoIn: fotoData || '-',
+                    photoOut: '-'
+                });
+            } else if (type === 'out') {
+                let att = window.appState.attendances.find(a => String(a.empId).trim().toUpperCase() === String(user.id).trim().toUpperCase() && String(a.date).trim() === dateStr);
+                if (att) {
+                    att.clockOut = timeStr;
+                    att.photoOut = fotoData || '-';
+                }
+            }
+            window.renderApp();
 
             let dataToSend = {
                 action: "absen",
@@ -735,12 +881,10 @@
                             shiftName = sh.name;
                             isValidShift = true;
                         } else {
-                            // PESAN KHUSUS JIKA SHIFT TIDAK DITEMUKAN DI DATABASE SHIFT
                             shiftName = `Shift [${sched.shiftId}] sudah terhapus di Master Shift. Atur ulang jadwal!`;
                         }
                     }
 
-                    // HANYA HITUNG JIKA JADWAL & SHIFT VALID
                     let lemburMins = isValidShift ? window.hitungLembur(a.clockIn, a.clockOut, sStart, sEnd) : 0;
                     
                     if(lemburMins > 0) {
@@ -1065,21 +1209,39 @@
             let loop = new Date(startDate);
             while(loop <= endDate) {
                 let dateStr = `${loop.getFullYear()}-${String(loop.getMonth() + 1).padStart(2, '0')}-${String(loop.getDate()).padStart(2, '0')}`;
-                jadwalBaruList.push({ id: 'SCH_' + Date.now() + Math.floor(Math.random()*1000), empId: empId, date: dateStr, shiftId: shiftId });
-                loop = new Date(loop.setDate(loop.getDate() + 1));
+                
+                window.appState.schedules = window.appState.schedules.filter(s => 
+                    !(String(s.empId).trim().toUpperCase() === String(empId).trim().toUpperCase() && window.formatDateStandard(s.date) === dateStr)
+                );
+                
+                jadwalBaruList.push({ 
+                    id: 'SCH_' + Date.now() + Math.floor(Math.random()*1000), 
+                    empId: empId, 
+                    date: dateStr, 
+                    shiftId: shiftId,
+                    id_user: empId,
+                    tanggal: dateStr,
+                    id_shift: shiftId
+                });
+                
+                loop.setDate(loop.getDate() + 1);
             }
+            
+            window.appState.schedules = [...window.appState.schedules, ...jadwalBaruList];
             
             let dataToSend = { action: "tambah_jadwal", jadwal_list: jadwalBaruList };
             
             try {
-                await fetch(DB_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(dataToSend) });
-                window.showToast('Jadwal diterapkan ke Server!', 'success');
+                fetch(DB_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(dataToSend) });
+                
+                window.showToast('Jadwal diterapkan!', 'success');
                 btn.closest('.fixed').remove();
-                await window.syncData(false);
+                
                 if (typeof window.updateIsiKalender === 'function') window.updateIsiKalender();
             } catch (e) {
                 window.showToast("Gagal menyimpan jadwal!", "error");
-                btn.innerHTML = 'Terapkan Jadwal'; btn.disabled = false;
+                btn.innerHTML = 'Terapkan Jadwal'; 
+                btn.disabled = false;
             }
         };
 
@@ -1133,7 +1295,8 @@
             for(let i=0; i<firstDay; i++) grid.innerHTML += `<div class="aspect-square p-1"></div>`;
             
             for(let d=1; d<=daysInMonth; d++) {
-                let dateStr = window.formatDateStandard(new Date(year, month, d));
+                let loopDate = new Date(year, month, d);
+                let dateStr = `${loopDate.getFullYear()}-${String(loopDate.getMonth() + 1).padStart(2, '0')}-${String(loopDate.getDate()).padStart(2, '0')}`;
                 
                 let mySchedule = window.appState.schedules.find(s => 
                     String(s.empId).trim().toUpperCase() === empId && 
@@ -1224,7 +1387,6 @@
                     if(sh) { sStart = String(sh.startTime).trim(); sEnd = String(sh.endTime).trim(); isValidShift = true; }
                 }
                 
-                // HANYA hitung lembur jika jadwal & shift valid
                 if (isValidShift) {
                     totalLemburMins += window.hitungLembur(att.clockIn, att.clockOut, sStart, sEnd);
                 }
@@ -1301,16 +1463,45 @@
             const user = window.appState.currentUser;
             if (user.role !== 'admin') { container.innerHTML = `<div class="h-full flex flex-col items-center justify-center p-8 text-center fade-in"><div class="w-24 h-24 bg-rose-100 text-rose-500 rounded-full flex items-center justify-center mb-6 border-4 border-white shadow-lg"><i data-lucide="shield-alert" class="w-12 h-12"></i></div><h2 class="text-xl font-bold text-slate-800 mb-2">Akses Ditolak</h2><p class="text-sm text-slate-500">Hanya HRD/Admin yang dapat mengakses ini.</p></div>`; return; }
             let emps = window.appState.employees.filter(e => !e.isDeleted);
-            let html = `<div class="bg-blue-600 pt-8 pb-16 px-5 md:px-10 rounded-b-[2rem] md:rounded-b-[3rem] shadow-md relative z-0 flex justify-between items-center"><h2 class="text-white font-bold text-xl md:text-2xl tracking-wide">Tim Kerja</h2><button onclick="window.tambahKaryawan()" class="bg-white/20 hover:bg-white/30 text-white p-2 rounded-xl backdrop-blur-sm transition active:scale-95 flex items-center gap-2"><i data-lucide="user-plus" class="w-6 h-6"></i> <span class="hidden md:inline font-bold text-sm">Tambah</span></button></div><div class="px-5 md:px-10 -mt-10 relative z-10 fade-in pb-24"><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">`;
+            let html = `<div class="bg-blue-600 pt-8 pb-16 px-5 md:px-10 rounded-b-[2rem] md:rounded-b-[3rem] shadow-md relative z-0 flex justify-between items-center"><h2 class="text-white font-bold text-xl md:text-2xl tracking-wide">Karyawan</h2><button onclick="window.tambahKaryawan()" class="bg-white/20 hover:bg-white/30 text-white p-2 rounded-xl backdrop-blur-sm transition active:scale-95 flex items-center gap-2"><i data-lucide="user-plus" class="w-6 h-6"></i> <span class="hidden md:inline font-bold text-sm">Tambah</span></button></div><div class="px-5 md:px-10 -mt-10 relative z-10 fade-in pb-24"><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">`;
             emps.forEach(e => {
+                let safeName = e.name || e.nama_lengkap || e.nama || 'Tanpa Nama';
+                let safePos = e.position || e.jabatan || 'Staff';
+                let safeUser = e.username || e.user || '-';
+                let safePin = e.password || e.pin || '';
                 html += `
                     <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex items-center gap-4 hover:shadow-md transition">
-                        <div class="w-12 h-12 ${e.role === 'admin' ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'} rounded-full flex items-center justify-center font-bold text-xl flex-shrink-0">${e.name.charAt(0)}</div>
-                        <div class="flex-1"><h4 class="font-bold text-slate-800 text-sm md:text-base flex items-center gap-2">${e.name} ${e.role === 'admin' ? '<i data-lucide="crown" class="w-3 h-3 md:w-4 md:h-4 text-amber-500"></i>' : ''}</h4><p class="text-xs text-slate-500 font-medium">${e.position} • <span class="font-mono bg-slate-100 px-1 rounded">${e.username}</span></p></div>
-                        <button onclick="window.editKaryawan('${e.id}', '${e.name}', '${e.username}', '${e.position}', '${e.password}')" class="p-2 bg-slate-50 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"><i data-lucide="edit" class="w-4 h-4"></i></button>
+                        <div class="w-12 h-12 ${e.role === 'admin' ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'} rounded-full flex items-center justify-center font-bold text-xl flex-shrink-0">${safeName.charAt(0)}</div>
+                        <div class="flex-1"><h4 class="font-bold text-slate-800 text-sm md:text-base flex items-center gap-2">${safeName} ${e.role === 'admin' ? '<i data-lucide="crown" class="w-3 h-3 md:w-4 md:h-4 text-amber-500"></i>' : ''}</h4><p class="text-xs text-slate-500 font-medium">${safePos} • <span class="font-mono bg-slate-100 px-1 rounded">${safeUser}</span></p></div>
+                        <div class="flex flex-col gap-1">
+                            <button onclick="window.editKaryawan('${e.id}', '${safeName}', '${safeUser}', '${safePos}', '${safePin}')" class="p-2 bg-slate-50 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"><i data-lucide="edit" class="w-4 h-4"></i></button>
+                            <button onclick="window.hapusKaryawan('${e.id}', this)" class="p-2 bg-slate-50 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                        </div>
                     </div>`;
             });
             html += `</div></div>`; container.innerHTML = html;
+        };
+
+        window.hapusKaryawan = function(id, btn) {
+            window.showConfirmModal("Hapus Karyawan?", "Apakah Anda yakin ingin menghapus data karyawan ini? Tindakan ini tidak dapat dibatalkan.", async () => {
+                btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>'; 
+                btn.disabled = true;
+                
+                try {
+                    await fetch(DB_URL, { 
+                        method: 'POST', 
+                        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
+                        body: JSON.stringify({ action: "hapus_karyawan", id_user: id }) 
+                    });
+                    window.showToast("Karyawan dihapus!", "success");
+                    btn.closest('.bg-white.rounded-2xl').remove();
+                    setTimeout(() => window.syncData(false), 1500);
+                } catch(e) { 
+                    window.showToast("Gagal menghapus!", "error"); 
+                    btn.innerHTML = '<i data-lucide="trash-2" class="w-4 h-4"></i>'; 
+                    btn.disabled = false;
+                }
+            });
         };
 
         window.tambahKaryawan = function() { window.tampilModalKaryawan(); };
@@ -1386,6 +1577,7 @@
 
         window.bukaEditProfil = function() {
             let user = window.appState.currentUser;
+            let isAdmin = user.role === 'admin';
             let modal = document.createElement('div'); modal.className = 'fixed inset-0 bg-slate-900/60 z-[90] flex justify-center items-center fade-in backdrop-blur-sm p-4';
             modal.innerHTML = `
                 <div class="bg-white w-full max-w-sm rounded-[2rem] p-6 shadow-2xl relative slide-up border border-slate-100">
@@ -1393,6 +1585,7 @@
                     <div class="space-y-4 mb-6">
                         <div><label class="text-xs font-semibold text-slate-500 block mb-1">Nama Lengkap</label><input type="text" id="edit-user-name" class="w-full border rounded-xl p-3 text-sm bg-slate-50 outline-none focus:border-blue-500" value="${user.name}"></div>
                         <div><label class="text-xs font-semibold text-slate-500 block mb-1">Kata Sandi / PIN Baru</label><input type="password" id="edit-user-pass" class="w-full border rounded-xl p-3 text-sm bg-slate-50 outline-none focus:border-blue-500" placeholder="Kosongkan jika tidak diubah"></div>
+                        ${isAdmin ? `<div><label class="text-xs font-semibold text-slate-500 block mb-1">Nama Aplikasi / Perusahaan</label><input type="text" id="edit-company-name" class="w-full border rounded-xl p-3 text-sm bg-slate-50 outline-none focus:border-blue-500" value="${window.appState.settings.companyName}"></div>` : ''}
                     </div>
                     <div class="flex gap-3"><button onclick="this.closest('.fixed').remove()" class="flex-1 bg-slate-100 text-slate-600 font-bold py-3.5 rounded-xl hover:bg-slate-200 text-sm transition">Batal</button>
                     <button onclick="window.simpanEditProfil(this)" class="flex-1 bg-blue-500 text-white font-bold py-3.5 rounded-xl hover:bg-blue-600 text-sm shadow-lg shadow-blue-200 transition">Simpan</button></div>
@@ -1403,18 +1596,25 @@
         window.simpanEditProfil = async function(btn) {
             let newName = document.getElementById('edit-user-name').value.trim();
             let newPass = document.getElementById('edit-user-pass').value.trim();
+            let companyNameInput = document.getElementById('edit-company-name');
+            let newCompanyName = companyNameInput ? companyNameInput.value.trim() : window.appState.settings.companyName;
+            
             let user = window.appState.currentUser;
             
             if(!newName) return window.showToast('Nama tidak boleh kosong!', 'error');
+            if(user.role === 'admin' && !newCompanyName) return window.showToast('Nama Aplikasi tidak boleh kosong!', 'error');
+            
             btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin mx-auto"></i>'; btn.disabled = true;
 
             let payloadPass = newPass ? newPass : user.password;
-            let dataToSend = { action: "update_profil", id_user: user.id, nama: newName, password: payloadPass };
+            let dataToSend = { action: "update_profil", id_user: user.id, nama: newName, password: payloadPass, company_name: newCompanyName };
 
             try {
-                await fetch(DB_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(dataToSend) });
-                user.name = newName; user.password = payloadPass; window.renderApp(); btn.closest('.fixed').remove(); 
-                window.showToast('Profil & Sandi diperbarui!', 'success');
+                await fetch(DB_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(dataToSend) });
+                user.name = newName; user.password = payloadPass; 
+                if(user.role === 'admin') window.appState.settings.companyName = newCompanyName;
+                window.renderApp(); btn.closest('.fixed').remove(); 
+                window.showToast('Profil & Pengaturan diperbarui!', 'success');
             } catch(e) { window.showToast("Gagal menyimpan profil!", "error"); btn.innerHTML = 'Simpan'; btn.disabled = false; }
         };
 
@@ -1422,17 +1622,17 @@
             const nav = document.createElement('div');
             nav.className = 'fixed bottom-0 w-full md:max-w-5xl lg:max-w-7xl bg-white border-t border-slate-100 flex justify-around md:justify-center md:gap-24 px-6 py-3 md:py-4 md:rounded-t-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.05)] z-50 pb-5 md:pb-4 no-print'; 
             const menus = [
-                { id: 'dashboard', icon: 'layout-dashboard', label: 'Beranda' },
-                { id: 'rekap', icon: 'file-spreadsheet', label: 'Rekap' },
-                { id: 'karyawan', icon: 'users', label: 'Tim' },
-                { id: 'akun', icon: 'user-circle', label: 'Akun' }
+                { id: 'dashboard', icon: 'layout-dashboard', label: 'Beranda', activeBg: 'bg-blue-600 shadow-blue-200', activeText: 'text-blue-600' },
+                { id: 'rekap', icon: 'file-spreadsheet', label: 'Rekap', activeBg: 'bg-emerald-500 shadow-emerald-200', activeText: 'text-emerald-600' },
+                { id: 'karyawan', icon: 'users', label: 'Karyawan', activeBg: 'bg-violet-500 shadow-violet-200', activeText: 'text-violet-600' },
+                { id: 'akun', icon: 'user-circle', label: 'Akun', activeBg: 'bg-slate-700 shadow-slate-300', activeText: 'text-slate-800' }
             ];
             menus.forEach(m => {
                 const isActive = currentTab === m.id;
                 nav.innerHTML += `
-                    <button onclick="window.navigate('${m.id}')" class="flex flex-col items-center gap-1 min-w-[60px] transition-all duration-300 ${isActive ? 'text-blue-600 transform -translate-y-1' : 'text-slate-400 hover:text-slate-600'}">
-                        <div class="relative p-1.5 ${isActive ? 'bg-blue-50 rounded-xl' : ''}">
-                            <i data-lucide="${m.icon}" class="w-6 h-6 ${isActive ? 'fill-blue-100 stroke-[2.5px]' : 'stroke-2'}"></i>
+                    <button onclick="window.navigate('${m.id}')" class="flex flex-col items-center gap-1 min-w-[60px] transition-all duration-300 ${isActive ? m.activeText + ' transform -translate-y-1' : 'text-slate-400 hover:text-slate-600'}">
+                        <div class="relative p-2 ${isActive ? m.activeBg + ' text-white rounded-xl shadow-lg' : 'p-1.5'} transition-all">
+                            <i data-lucide="${m.icon}" class="w-5 h-5 md:w-6 md:h-6 ${isActive ? 'stroke-[2.5px]' : 'stroke-2'}"></i>
                         </div>
                         <span class="text-[10px] font-bold tracking-wide">${m.label}</span>
                     </button>`;
