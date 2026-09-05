@@ -43,7 +43,7 @@
         
         window.appState = {
             currentUser: null,
-            employees: [{ id: 'ADMIN', name: 'Administrator', position: 'Admin Utama', password: 'admin', role: 'admin', isDeleted: false, profilePhoto: '' }],
+            employees: [{ id: 'ADMIN', name: localStorage.getItem('absensique_admin_name') || 'Administrator', position: 'Admin Utama', password: 'admin', role: 'admin', isDeleted: false, profilePhoto: '' }],
             attendances: [],
             leaves: [],
             schedules: [],
@@ -53,12 +53,8 @@
 
         window.getSafeImageUrl = function(url) {
             if (!url || url === '-' || url.startsWith('Gagal')) return '';
-            // Mencari ID file dari link google drive standar
             let match = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || url.match(/\?id=([a-zA-Z0-9_-]+)/);
-            if (match && match[1]) {
-                // Menggunakan Thumbnail API Google Drive yang kebal blokir
-                return 'https://drive.google.com/thumbnail?id=' + match[1] + '&sz=w1000';
-            }
+            if (match && match[1]) return 'https://drive.google.com/thumbnail?id=' + match[1] + '&sz=w1000';
             return url;
         };
 
@@ -98,7 +94,6 @@
             `;
             document.body.appendChild(modal);
             lucide.createIcons();
-
             document.getElementById('btn-modal-cancel').onclick = () => { modal.remove(); if(onCancel) onCancel(); };
             document.getElementById('btn-modal-confirm').onclick = () => { modal.remove(); if(onConfirm) onConfirm(); };
         };
@@ -108,24 +103,14 @@
             try {
                 let outTime = String(clockOut).trim().replace('.', ':');
                 let sEndTime = String(shiftEnd).trim().replace('.', ':');
-                
                 let outParts = outTime.split(':');
                 let seParts = sEndTime.split(':');
-                
                 let outMins = parseInt(outParts[0]||0) * 60 + parseInt(outParts[1]||0);
                 let seMins = parseInt(seParts[0]||0) * 60 + parseInt(seParts[1]||0);
                 
-                if (seMins < 12 * 60 && outMins > 12 * 60) {
-                    seMins += 24 * 60;
-                }
-                if (outMins < 12 * 60 && seMins > 12 * 60) {
-                    outMins += 24 * 60;
-                }
-
-                if (outMins > seMins) {
-                    return outMins - seMins; 
-                }
-                
+                if (seMins < 12 * 60 && outMins > 12 * 60) seMins += 24 * 60;
+                if (outMins < 12 * 60 && seMins > 12 * 60) outMins += 24 * 60;
+                if (outMins > seMins) return outMins - seMins; 
                 return 0; 
             } catch(e) { return 0; }
         };
@@ -133,20 +118,13 @@
         window.formatJam = function(waktu) {
             if(!waktu || waktu === '-' || waktu === '--:--') return '--:--';
             let str = String(waktu).trim();
-            
             if (str.includes('T') && (str.includes('Z') || str.includes('+') || str.includes('-'))) {
                 let d = new Date(str);
-                if (!isNaN(d.getTime())) {
-                    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
-                }
+                if (!isNaN(d.getTime())) return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
             }
-            
             str = str.replace(/\./g, ':');
             let m = str.match(/(\d{1,2}):(\d{2})/);
-            if(m) {
-                return String(m[1]).padStart(2, '0') + ':' + String(m[2]).padStart(2, '0');
-            }
-            
+            if(m) return String(m[1]).padStart(2, '0') + ':' + String(m[2]).padStart(2, '0');
             return str;
         };
 
@@ -159,16 +137,10 @@
                 let dDay = String(dateInput.getDate()).padStart(2, '0');
                 return `${dYear}-${dMonth}-${dDay}`;
             }
-
             let str = String(dateInput).trim().replace(/'/g, ''); 
             if (str.includes('T') && str.endsWith('Z')) {
                 let d = new Date(str);
-                if(!isNaN(d.getTime())) {
-                    let dYear = d.getFullYear();
-                    let dMonth = String(d.getMonth() + 1).padStart(2, '0');
-                    let dDay = String(d.getDate()).padStart(2, '0');
-                    return `${dYear}-${dMonth}-${dDay}`;
-                }
+                if(!isNaN(d.getTime())) return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
             }
             if (str.includes('T')) str = str.split('T')[0];
             if (str.includes(' ')) str = str.split(' ')[0];
@@ -178,23 +150,15 @@
                 if(parts.length === 3) {
                     if(parts[2].length === 4) { 
                         let p0 = parseInt(parts[0]);
-                        if(p0 > 12) { 
-                            return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
-                        } else { 
-                            return `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
-                        }
+                        if(p0 > 12) return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                        else return `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
                     } else if (parts[0].length === 4) { 
                         return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
                     }
                 }
             }
             let d = new Date(str);
-            if(!isNaN(d.getTime())) {
-                let dYear = d.getFullYear();
-                let dMonth = String(d.getMonth() + 1).padStart(2, '0');
-                let dDay = String(d.getDate()).padStart(2, '0');
-                return `${dYear}-${dMonth}-${dDay}`;
-            }
+            if(!isNaN(d.getTime())) return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
             return str;
         };
 
@@ -209,12 +173,7 @@
                 const textResponse = await response.text();
                 let cloudData;
                 
-                try {
-                    cloudData = JSON.parse(textResponse);
-                } catch (e) {
-                    throw new Error("Data dari Google bukan format JSON. Biasanya karena URL salah, butuh login, atau Code.gs Anda error.");
-                }
-                
+                try { cloudData = JSON.parse(textResponse); } catch (e) { throw new Error("Format Google bukan JSON."); }
                 if(cloudData.error) throw new Error(cloudData.error);
                 let db = cloudData.data ? cloudData.data : cloudData;
                 
@@ -223,9 +182,7 @@
                     for(let k in obj) { 
                         if(k) {
                             let cleanKey = String(k).toLowerCase().trim();
-                            res[cleanKey] = obj[k]; 
-                            res[cleanKey.replace(/\s+/g, '_')] = obj[k]; 
-                            res[cleanKey.replace(/\s+/g, '')] = obj[k]; 
+                            res[cleanKey] = obj[k]; res[cleanKey.replace(/\s+/g, '_')] = obj[k]; res[cleanKey.replace(/\s+/g, '')] = obj[k]; 
                         } 
                     }
                     return res;
@@ -247,7 +204,7 @@
                     }).filter(e => e.id !== ''); 
                     
                     if(!window.appState.employees.find(e => String(e.id).toUpperCase() === 'ADMIN')) {
-                        window.appState.employees.push({ id: 'ADMIN', name: 'Administrator', username: 'admin', position: 'Admin Utama', password: 'admin', role: 'admin', isDeleted: false, profilePhoto: '' });
+                        window.appState.employees.push({ id: 'ADMIN', name: localStorage.getItem('absensique_admin_name') || 'Administrator', username: 'admin', position: 'Admin Utama', password: 'admin', role: 'admin', isDeleted: false, profilePhoto: '' });
                     }
                 }
                 
@@ -256,66 +213,28 @@
                 if (db.leaves !== undefined) {
                     window.appState.leaves = (Array.isArray(db.leaves) ? db.leaves : []).map(raw => {
                         let l = lowerKeys(raw);
-                        let rawDate = l.date || l.tanggal || '';
-                        let rawEmpId = l.empid || l.id_user || l.iduser || '';
-                        return {
-                            ...l, 
-                            date: window.formatDateStandard(rawDate), 
-                            empId: String(rawEmpId).trim().toUpperCase(),
-                            type: l.type || l.jenis || l.jenis_izin || l.jenisizin || '',
-                            reason: l.reason || l.keterangan || l.alasan || '',
-                            status: l.status || 'Pending'
-                        };
+                        return { ...l, date: window.formatDateStandard(l.date || l.tanggal || ''), empId: String(l.empid || l.id_user || l.iduser || '').trim().toUpperCase(), type: l.type || l.jenis || l.jenis_izin || l.jenisizin || '', reason: l.reason || l.keterangan || l.alasan || '', status: l.status || 'Pending' };
                     });
                 }
                 
                 if (db.shifts !== undefined) {
                     window.appState.shifts = (Array.isArray(db.shifts) ? db.shifts : []).map(raw => {
                         let s = lowerKeys(raw);
-                        return {
-                            id: String(s.id_shift || s.shift || s.idshift || s.id || '').trim().toUpperCase(),
-                            name: s.nama_shift || s.namashift || s.nama || s.name || '',
-                            startTime: window.formatJam(s.jam_masuk || s.jammasuk || s.start || s.starttime || s.masuk),
-                            endTime: window.formatJam(s.jam_pulang || s.jampulang || s.end || s.endtime || s.pulang)
-                        };
+                        return { id: String(s.id_shift || s.shift || s.idshift || s.id || '').trim().toUpperCase(), name: s.nama_shift || s.namashift || s.nama || s.name || '', startTime: window.formatJam(s.jam_masuk || s.jammasuk || s.start || s.starttime || s.masuk), endTime: window.formatJam(s.jam_pulang || s.jampulang || s.end || s.endtime || s.pulang) };
                     });
                 }
                 
                 if (db.schedules !== undefined) {
                     window.appState.schedules = (Array.isArray(db.schedules) ? db.schedules : []).map(raw => {
                         let s = lowerKeys(raw);
-                        let rawDate = s.date || s.tanggal || '';
-                        let rawEmpId = s.id_user || s.iduser || s.empid || s.user || s.id || '';
-                        let rawShiftId = s.id_shift || s.idshift || s.shiftid || s.shift || '';
-                        return { 
-                            id: String(s.id || s.id_jadwal || s.idjadwal || '').trim(),
-                            date: window.formatDateStandard(rawDate), 
-                            empId: String(rawEmpId).trim().toUpperCase(), 
-                            shiftId: String(rawShiftId).trim().toUpperCase() 
-                        };
+                        return { id: String(s.id || s.id_jadwal || s.idjadwal || '').trim(), date: window.formatDateStandard(s.date || s.tanggal || ''), empId: String(s.id_user || s.iduser || s.empid || s.user || s.id || '').trim().toUpperCase(), shiftId: String(s.id_shift || s.idshift || s.shiftid || s.shift || '').trim().toUpperCase() };
                     });
                 }
                 
                 if (db.attendances !== undefined) {
                     window.appState.attendances = (Array.isArray(db.attendances) ? db.attendances : []).map(raw => {
                         let a = lowerKeys(raw);
-                        let rawDate = a.date || a.tanggal || '';
-                        let rawEmpId = a.empid || a.id_user || a.iduser || '';
-                        let rIn = window.formatJam(a.clockin || a.jam_masuk || a.jammasuk);
-                        let rOut = window.formatJam(a.clockout || a.jam_pulang || a.jampulang);
-                        let rPhotoIn = a.photoin || a.foto_masuk || a.fotomasuk || a.foto || '-';
-                        let rPhotoOut = a.photoout || a.foto_pulang || a.fotopulang || '-';
-                        
-                        return { 
-                            id: String(a.id || a.id_absensi || a.idabsensi || '').trim(),
-                            date: window.formatDateStandard(rawDate), 
-                            empId: String(rawEmpId).trim().toUpperCase(),
-                            clockIn: rIn,
-                            clockOut: rOut,
-                            status: a.status || 'Hadir',
-                            photoIn: rPhotoIn,
-                            photoOut: rPhotoOut
-                        };
+                        return { id: String(a.id || a.id_absensi || a.idabsensi || '').trim(), date: window.formatDateStandard(a.date || a.tanggal || ''), empId: String(a.empid || a.id_user || a.iduser || '').trim().toUpperCase(), clockIn: window.formatJam(a.clockin || a.jam_masuk || a.jammasuk), clockOut: window.formatJam(a.clockout || a.jam_pulang || a.jampulang), status: a.status || 'Hadir', photoIn: a.photoin || a.foto_masuk || a.fotomasuk || a.foto || '-', photoOut: a.photoout || a.foto_pulang || a.fotopulang || '-' };
                     });
                 }
                 
@@ -325,20 +244,11 @@
                 }
 
                 window.renderApp();
-                
-                if (document.getElementById('kalender-grid') && typeof window.updateIsiKalender === 'function') {
-                    window.updateIsiKalender();
-                }
-                
+                if (document.getElementById('kalender-grid') && typeof window.updateIsiKalender === 'function') window.updateIsiKalender();
                 if(isManual) window.showToast('Data berhasil ditarik!', 'success');
                 
             } catch(e) { 
-                console.warn("Detail Error Sync:", e);
-                let msg = e.message;
-                if(msg.includes('NetworkError') || msg.includes('Failed to fetch') || msg.includes('CORS')) {
-                    msg = "Network Error! Google memblokir akses. Biasanya ini karena Script Google (Code.gs) Anda ERROR saat dijalankan (misal: Salah nama Tab di Excel). Periksa script Code.gs Anda!";
-                }
-                if(isManual) window.showToast(msg, "error");
+                if(isManual) window.showToast("Gagal sinkron: " + e.message, "error");
             } finally {
                 if(btnSync) btnSync.classList.remove('animate-spin');
             }
@@ -346,18 +256,13 @@
 
         window.renderApp = function() {
             const appDiv = document.getElementById('app');
-            
             if (!window.appState.currentUser) {
                 if (!document.getElementById('pin-input')) {
-                    appDiv.innerHTML = ''; 
-                    renderLogin(appDiv);
-                    if(window.lucide) lucide.createIcons(); 
+                    appDiv.innerHTML = ''; renderLogin(appDiv); if(window.lucide) lucide.createIcons(); 
                 }
                 return; 
             }
-
             appDiv.innerHTML = ''; 
-
             const contentDiv = document.createElement('div');
             contentDiv.id = 'main-content';
             contentDiv.className = 'h-screen overflow-y-auto pb-20 no-scrollbar';
@@ -369,84 +274,52 @@
             else if(currentTab === 'akun') window.renderAkun(contentDiv);
 
             renderBottomNav(appDiv);
-            
             if(window.lucide) lucide.createIcons();
         };
 
-        window.navigate = function(tab) {
-            currentTab = tab;
-            window.renderApp();
-        };
+        window.navigate = function(tab) { currentTab = tab; window.renderApp(); };
 
         function renderLogin(container) {
             const bgImage = "https://images.unsplash.com/photo-1534723452862-4c874018d66d?auto=format&fit=crop&q=80&w=1000"; 
             container.innerHTML = `
                 <div class="h-screen w-full relative flex items-center justify-center p-6 bg-slate-900">
-                    <div class="absolute inset-0 z-0">
-                        <div class="absolute inset-0 bg-slate-900/60 z-10 mix-blend-multiply backdrop-blur-[3px]"></div>
-                        <img src="${bgImage}" alt="Background" class="w-full h-full object-cover opacity-80" />
-                    </div>
+                    <div class="absolute inset-0 z-0"><div class="absolute inset-0 bg-slate-900/60 z-10 mix-blend-multiply backdrop-blur-[3px]"></div><img src="${bgImage}" class="w-full h-full object-cover opacity-80" /></div>
                     <div class="glass-panel w-full max-w-sm rounded-[2.5rem] p-8 relative z-20 shadow-2xl fade-in flex flex-col items-center border border-white/20">
                         <div class="w-24 h-24 mb-6 rounded-[2rem] bg-gradient-to-br from-blue-500 to-blue-700 p-1 shadow-[0_8px_30px_rgba(37,99,235,0.6)] flex items-center justify-center relative">
                             <div class="w-full h-full bg-white rounded-[1.8rem] flex items-center justify-center z-10 relative overflow-hidden"><i data-lucide="fingerprint" class="w-14 h-14 text-blue-600"></i></div>
                             <div class="absolute -bottom-2 -right-2 bg-gradient-to-r from-orange-400 to-amber-500 w-10 h-10 rounded-full flex items-center justify-center z-20 shadow-lg border-2 border-white"><i data-lucide="clock" class="w-5 h-5 text-white"></i></div>
                         </div>
-                        <div class="text-center mb-10">
-                            <h1 class="text-3xl font-extrabold text-white tracking-tight mb-2 drop-shadow-md">${window.appState.settings.companyName}</h1>
-                            <p class="text-blue-100 text-xs font-medium tracking-wider uppercase border-t border-white/20 pt-2 inline-block">Sistem Absensi Terpadu</p>
-                        </div>
+                        <div class="text-center mb-10"><h1 class="text-3xl font-extrabold text-white tracking-tight mb-2 drop-shadow-md">${window.appState.settings.companyName}</h1><p class="text-blue-100 text-xs font-medium tracking-wider uppercase border-t border-white/20 pt-2 inline-block">Sistem Absensi Terpadu</p></div>
                         <div class="w-full space-y-5">
                             <div>
                                 <label class="text-[10px] font-bold text-blue-100 uppercase tracking-widest mb-2 block ml-2">PIN / Username Masuk</label>
-                                <div class="relative group">
-                                    <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><i data-lucide="lock" class="w-5 h-5 text-slate-400 group-focus-within:text-blue-500 transition-colors"></i></div>
-                                    <input type="password" id="pin-input" class="w-full pl-12 pr-4 py-4 bg-white/95 border-2 border-transparent rounded-2xl text-slate-800 font-bold tracking-widest focus:border-blue-400 focus:ring-4 focus:ring-blue-400/20 transition-all outline-none text-center text-lg shadow-inner" placeholder="••••" onkeypress="if(event.key === 'Enter') window.loginApp()">
-                                </div>
+                                <div class="relative group"><div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><i data-lucide="lock" class="w-5 h-5 text-slate-400 group-focus-within:text-blue-500 transition-colors"></i></div><input type="password" id="pin-input" class="w-full pl-12 pr-4 py-4 bg-white/95 border-2 border-transparent rounded-2xl text-slate-800 font-bold tracking-widest focus:border-blue-400 focus:ring-4 focus:ring-blue-400/20 transition-all outline-none text-center text-lg shadow-inner" placeholder="••••" onkeypress="if(event.key === 'Enter') window.loginApp()"></div>
                             </div>
                             <button onclick="window.loginApp()" class="w-full bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white font-bold py-4 rounded-2xl shadow-[0_8px_20px_rgba(37,99,235,0.4)] transition-all active:scale-95 flex items-center justify-center gap-2">MASUK <i data-lucide="arrow-right" class="w-5 h-5"></i></button>
                         </div>
                     </div>
-                </div>
-            `;
+                </div>`;
         }
 
         window.loginApp = function() {
             let pinInput = document.getElementById('pin-input').value.trim();
             if (!pinInput) return window.showToast('Silakan masukkan PIN/Username Anda', 'error');
-
             let user = window.appState.employees.find(e => (!e.isDeleted) && (String(e.password).trim() === pinInput || String(e.username).trim() === pinInput));
-            
             if (!user && pinInput.toLowerCase() === 'admin') {
                 user = window.appState.employees.find(e => String(e.role).toLowerCase() === 'admin' || String(e.id).toUpperCase() === 'ADMIN');
-                if (!user) {
-                    user = { id: 'ADMIN', name: 'Administrator', username: 'admin', position: 'Admin Utama', password: 'admin', role: 'admin', isDeleted: false, profilePhoto: '' };
-                    window.appState.employees.push(user);
-                }
+                if (!user) { user = { id: 'ADMIN', name: localStorage.getItem('absensique_admin_name') || 'Administrator', username: 'admin', position: 'Admin Utama', password: 'admin', role: 'admin', isDeleted: false, profilePhoto: '' }; window.appState.employees.push(user); }
             }
-            
             if (user && pinInput.toLowerCase() === 'admin') user.role = 'admin';
-            
-            if (user) {
-                window.appState.currentUser = user;
-                currentTab = 'dashboard';
-                window.renderApp();
-                window.showToast(`Selamat datang, ${user.name}!`);
-            } else {
-                window.showToast('Data salah atau akun tidak ditemukan!', 'error');
-            }
+            if (user) { window.appState.currentUser = user; currentTab = 'dashboard'; window.renderApp(); window.showToast(`Selamat datang, ${user.name}!`); } 
+            else { window.showToast('Data salah atau akun tidak ditemukan!', 'error'); }
         };
 
         window.logoutApp = function() {
-            window.showConfirmModal("Keluar Aplikasi?", "Apakah Anda yakin ingin keluar (Log Out) dari sistem?", () => {
-                window.appState.currentUser = null;
-                window.renderApp();
-                window.showToast('Anda telah keluar.');
-            });
+            window.showConfirmModal("Keluar Aplikasi?", "Apakah Anda yakin ingin keluar (Log Out) dari sistem?", () => { window.appState.currentUser = null; window.renderApp(); window.showToast('Anda telah keluar.'); });
         };
 
         window.renderDashboard = function(container) {
             const user = window.appState.currentUser;
-            
             const now = new Date();
             const yyyy = now.getFullYear();
             const mm = String(now.getMonth() + 1).padStart(2, '0');
@@ -454,25 +327,20 @@
             const todayStr = `${yyyy}-${mm}-${dd}`;
             const currentMonth = todayStr.substring(0, 7);
             
-            let myAtt = null, myLeave = null, countHadir = 0;
-            let jamLembur = 0, sisaMenitLembur = 0;
+            let myAtt = null, myLeave = null, countHadir = 0, jamLembur = 0, sisaMenitLembur = 0;
             let todayShiftName = "Belum Ada Jadwal";
             
             if (user.role !== 'admin') {
                 myAtt = window.appState.attendances.find(a => String(a.empId).trim().toUpperCase() === String(user.id).trim().toUpperCase() && String(a.date).trim() === todayStr);
-                myLeave = window.appState.leaves.find(l => String(l.empId).trim().toUpperCase() === String(user.id).trim().toUpperCase() && String(l.date).trim() === todayStr);
-                
+                myLeave = window.appState.leaves.find(l => String(l.empId).trim().toUpperCase() === String(user.id).trim().toUpperCase() && String(l.date).trim() === todayStr && String(l.status).trim() === 'Disetujui');
                 const myMonthAtt = window.appState.attendances.filter(a => String(a.empId).trim().toUpperCase() === String(user.id).trim().toUpperCase() && String(a.date).trim().startsWith(currentMonth));
                 countHadir = myMonthAtt.length;
 
                 let mySchedule = window.appState.schedules.find(s => String(s.empId).trim().toUpperCase() === String(user.id).trim().toUpperCase() && window.formatDateStandard(s.date) === todayStr);
                 if(mySchedule) {
                     let shiftData = window.appState.shifts.find(sh => String(sh.id).trim().toUpperCase() === String(mySchedule.shiftId).trim().toUpperCase());
-                    if(shiftData) {
-                        todayShiftName = `Shift: ${shiftData.name} (${shiftData.startTime} - ${shiftData.endTime})`;
-                    } else {
-                        todayShiftName = `Error: Shift [${mySchedule.shiftId}] terhapus di Master Shift!`;
-                    }
+                    if(shiftData) todayShiftName = `Shift: ${shiftData.name} (${shiftData.startTime} - ${shiftData.endTime})`;
+                    else todayShiftName = `Error: Shift [${mySchedule.shiftId}] terhapus di Master Shift!`;
                 }
 
                 let totalLemburMenit = 0;
@@ -480,20 +348,15 @@
                     if(att.clockOut && att.clockOut !== '-' && att.clockOut !== '--:--') {
                         let cleanDate = window.formatDateStandard(att.date);
                         let sched = window.appState.schedules.find(s => String(s.empId).trim().toUpperCase() === String(user.id).trim().toUpperCase() && window.formatDateStandard(s.date) === cleanDate);
-                        
-                        let sStart = null, sEnd = null; 
-                        let isValidShift = false;
+                        let sStart = null, sEnd = null, isValidShift = false;
                         if(sched) {
                             let sh = window.appState.shifts.find(s => String(s.id).trim().toUpperCase() === String(sched.shiftId).trim().toUpperCase());
                             if(sh) { sStart = String(sh.startTime).trim(); sEnd = String(sh.endTime).trim(); isValidShift = true; }
                         }
-                        if (isValidShift) {
-                            totalLemburMenit += window.hitungLembur(att.clockIn, att.clockOut, sStart, sEnd);
-                        }
+                        if (isValidShift) totalLemburMenit += window.hitungLembur(att.clockIn, att.clockOut, sStart, sEnd);
                     }
                 });
-                jamLembur = Math.floor(totalLemburMenit / 60);
-                sisaMenitLembur = totalLemburMenit % 60;
+                jamLembur = Math.floor(totalLemburMenit / 60); sisaMenitLembur = totalLemburMenit % 60;
             }
 
             let chartHtml = '';
@@ -503,9 +366,7 @@
                 let d = new Date(); d.setDate(d.getDate() - i);
                 let dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
                 let dayName = d.toLocaleDateString('id-ID', {weekday:'short'});
-                
-                let barColor = 'bg-slate-200'; let barHeight = '15%';
-                let toolTip = '';
+                let barColor = 'bg-slate-200'; let barHeight = '15%'; let toolTip = '';
                 
                 if (user.role === 'admin') {
                     let dailyAtts = window.appState.attendances.filter(a => String(a.date).trim() === dateStr && String(a.status).trim() === 'Hadir');
@@ -518,89 +379,49 @@
                     let attData = window.appState.attendances.find(a => String(a.empId).trim().toUpperCase() === String(user.id).trim().toUpperCase() && String(a.date).trim() === dateStr);
                     let lvData = window.appState.leaves.find(l => String(l.empId).trim().toUpperCase() === String(user.id).trim().toUpperCase() && String(l.date).trim() === dateStr && String(l.status).trim() === 'Disetujui');
                     if(attData) { barColor = 'bg-emerald-500'; barHeight = '100%'; } 
-                    else if (lvData) { barColor = 'bg-amber-400'; barHeight = '70%'; }
+                    else if (lvData) { 
+                        if(lvData.type.toLowerCase().includes('libur') || lvData.type.toLowerCase().includes('cuti')) barColor = 'bg-rose-400';
+                        else barColor = 'bg-amber-400';
+                        barHeight = '70%'; 
+                    }
                     else if(dateStr === todayStr) { barColor = 'bg-blue-300 animate-pulse'; barHeight = '50%'; }
                 }
                 
                 chartHtml += `
                     <div class="flex flex-col items-center flex-1 gap-2 h-full group relative cursor-pointer">
                         ${toolTip}
-                        <div class="w-full bg-slate-50 rounded-lg h-full flex items-end justify-center overflow-hidden relative border border-slate-100">
-                            <div class="${barColor} w-full rounded-lg transition-all duration-1000 shadow-sm" style="height: ${barHeight};"></div>
-                        </div>
+                        <div class="w-full bg-slate-50 rounded-lg h-full flex items-end justify-center overflow-hidden relative border border-slate-100"><div class="${barColor} w-full rounded-lg transition-all duration-1000 shadow-sm" style="height: ${barHeight};"></div></div>
                         <span class="text-[9px] font-bold ${dateStr === todayStr ? 'text-blue-600' : 'text-slate-500'} uppercase">${dayName}</span>
-                    </div>
-                `;
+                    </div>`;
             }
 
             let leftPanelHtml = '';
-
             if (user.role === 'admin') {
                 let empOvertimeHtml = '';
-                if (staffList.length === 0) {
-                     empOvertimeHtml = `<div class="text-center py-6 text-slate-400 text-sm font-medium">Belum ada data karyawan.</div>`;
-                } else {
+                if (staffList.length === 0) empOvertimeHtml = `<div class="text-center py-6 text-slate-400 text-sm font-medium">Belum ada data karyawan.</div>`;
+                else {
                      empOvertimeHtml = staffList.map(emp => {
                          let empMonthAtt = window.appState.attendances.filter(a => String(a.empId).trim().toUpperCase() === String(emp.id).trim().toUpperCase() && String(a.date).trim().startsWith(currentMonth));
                          let totalMenitLemburEmp = 0;
-                         
                          empMonthAtt.forEach(att => {
                              if(att.clockOut && att.clockOut !== '-' && att.clockOut !== '--:--') {
                                  let cleanDate = window.formatDateStandard(att.date);
                                  let sched = window.appState.schedules.find(s => String(s.empId).trim().toUpperCase() === String(emp.id).trim().toUpperCase() && window.formatDateStandard(s.date) === cleanDate);
-                                 let sStart = null, sEnd = null;
-                                 let isValidShift = false;
-                                 
-                                 if(sched) {
-                                     let sh = window.appState.shifts.find(s => String(s.id).trim().toUpperCase() === String(sched.shiftId).trim().toUpperCase());
-                                     if(sh) { sStart = String(sh.startTime).trim(); sEnd = String(sh.endTime).trim(); isValidShift = true; }
-                                 }
-                                 
-                                 if (isValidShift) {
-                                     totalMenitLemburEmp += window.hitungLembur(att.clockIn, att.clockOut, sStart, sEnd);
-                                 }
+                                 let sStart = null, sEnd = null, isValidShift = false;
+                                 if(sched) { let sh = window.appState.shifts.find(s => String(s.id).trim().toUpperCase() === String(sched.shiftId).trim().toUpperCase()); if(sh) { sStart = String(sh.startTime).trim(); sEnd = String(sh.endTime).trim(); isValidShift = true; } }
+                                 if (isValidShift) totalMenitLemburEmp += window.hitungLembur(att.clockIn, att.clockOut, sStart, sEnd);
                              }
                          });
-                         let j = Math.floor(totalMenitLemburEmp / 60);
-                         let m = totalMenitLemburEmp % 60;
-                         
+                         let j = Math.floor(totalMenitLemburEmp / 60); let m = totalMenitLemburEmp % 60;
                          let safeName = emp.name || emp.nama_lengkap || emp.nama || 'Tanpa Nama';
                          let safePos = emp.position || emp.jabatan || 'Staff';
-                         
-                         // Menggunakan penarik gambar khusus yang baru
                          let urlFotoEmp = window.getSafeImageUrl(emp.profilePhoto);
-                         let avatarMini = (urlFotoEmp && urlFotoEmp !== '')
-                             ? `<img src="${urlFotoEmp}" class="w-10 h-10 rounded-full object-cover shadow-inner border border-indigo-200 flex-shrink-0">`
-                             : `<div class="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center font-bold text-sm shadow-inner flex-shrink-0">${safeName.charAt(0)}</div>`;
+                         let avatarMini = (urlFotoEmp && urlFotoEmp !== '') ? `<img src="${urlFotoEmp}" class="w-10 h-10 rounded-full object-cover shadow-inner border border-indigo-200 flex-shrink-0">` : `<div class="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center font-bold text-sm shadow-inner flex-shrink-0">${safeName.charAt(0)}</div>`;
 
-                         return `
-                         <div class="bg-indigo-50/50 p-3 rounded-xl border border-indigo-50 flex justify-between items-center hover:bg-indigo-50 transition mb-2">
-                             <div class="flex items-center gap-3">
-                                 ${avatarMini}
-                                 <div>
-                                     <h5 class="text-sm font-bold text-slate-800">${safeName}</h5>
-                                     <p class="text-[10px] text-slate-500 font-medium">${safePos}</p>
-                                 </div>
-                             </div>
-                             <div class="text-right">
-                                 <p class="text-sm font-black text-indigo-600">${j}<span class="text-[10px] font-bold text-indigo-400">j</span> ${m}<span class="text-[10px] font-bold text-indigo-400">m</span></p>
-                             </div>
-                         </div>
-                         `;
+                         return `<div class="bg-indigo-50/50 p-3 rounded-xl border border-indigo-50 flex justify-between items-center hover:bg-indigo-50 transition mb-2"><div class="flex items-center gap-3">${avatarMini}<div><h5 class="text-sm font-bold text-slate-800">${safeName}</h5><p class="text-[10px] text-slate-500 font-medium">${safePos}</p></div></div><div class="text-right"><p class="text-sm font-black text-indigo-600">${j}<span class="text-[10px] font-bold text-indigo-400">j</span> ${m}<span class="text-[10px] font-bold text-indigo-400">m</span></p></div></div>`;
                      }).join('');
                 }
-
-                leftPanelHtml = `
-                    <div class="bg-white rounded-3xl p-5 shadow-xl border border-slate-100 flex flex-col h-full">
-                        <div class="flex justify-between items-center mb-4 border-b border-slate-50 pb-3">
-                            <h4 class="font-bold text-slate-700 text-sm flex items-center gap-2"><i data-lucide="clock" class="w-4 h-4 text-indigo-500"></i> Rekap Lembur (Bulan Ini)</h4>
-                            <span class="text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-1 rounded-lg uppercase tracking-wide">Semua Tim</span>
-                        </div>
-                        <div class="space-y-3 overflow-y-auto no-scrollbar pb-2 flex-1">
-                            ${empOvertimeHtml}
-                        </div>
-                    </div>
-                `;
+                leftPanelHtml = `<div class="bg-white rounded-3xl p-5 shadow-xl border border-slate-100 flex flex-col h-full"><div class="flex justify-between items-center mb-4 border-b border-slate-50 pb-3"><h4 class="font-bold text-slate-700 text-sm flex items-center gap-2"><i data-lucide="clock" class="w-4 h-4 text-indigo-500"></i> Rekap Lembur (Bulan Ini)</h4><span class="text-[10px] font-bold bg-slate-100 text-slate-500 px-2 py-1 rounded-lg uppercase tracking-wide">Semua Tim</span></div><div class="space-y-3 overflow-y-auto no-scrollbar pb-2 flex-1">${empOvertimeHtml}</div></div>`;
             } else {
                 leftPanelHtml = `
                     <div class="bg-white rounded-3xl p-5 shadow-xl border border-slate-100 flex flex-col">
@@ -608,62 +429,30 @@
                             <h4 class="font-bold text-slate-700 text-sm flex items-center gap-2"><i data-lucide="calendar" class="w-4 h-4 text-blue-500"></i> ${new Date().toLocaleDateString('id-ID', {weekday:'long', day:'numeric', month:'short'})}</h4>
                             <span class="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-bold tracking-wide">${myAtt ? myAtt.status : (myLeave ? myLeave.status : 'Belum Absen')}</span>
                         </div>
-                        
                         <div class="text-center mb-4"><p class="text-[11px] md:text-sm ${todayShiftName.includes('terhapus') ? 'text-rose-600 bg-rose-50 border-rose-100' : 'text-blue-600 bg-blue-50 border-blue-100'} py-1.5 px-3 rounded-lg border font-bold mb-1">${todayShiftName}</p></div>
-
                         <div class="flex gap-4 mb-5">
-                            <div class="flex-1 bg-slate-50 rounded-2xl p-4 text-center border border-slate-100 relative">
-                                <p class="text-slate-500 text-xs font-semibold mb-1">Jam Masuk</p>
-                                <p class="text-2xl md:text-3xl font-black text-slate-800">${myAtt ? myAtt.clockIn : '--:--'}</p>
-                            </div>
-                            <div class="flex-1 bg-slate-50 rounded-2xl p-4 text-center border border-slate-100 relative">
-                                <p class="text-slate-500 text-xs font-semibold mb-1">Jam Pulang</p>
-                                <p class="text-2xl md:text-3xl font-black text-slate-800">${(myAtt && myAtt.clockOut) ? myAtt.clockOut : '--:--'}</p>
-                            </div>
+                            <div class="flex-1 bg-slate-50 rounded-2xl p-4 text-center border border-slate-100 relative"><p class="text-slate-500 text-xs font-semibold mb-1">Jam Masuk</p><p class="text-2xl md:text-3xl font-black text-slate-800">${myAtt ? myAtt.clockIn : '--:--'}</p></div>
+                            <div class="flex-1 bg-slate-50 rounded-2xl p-4 text-center border border-slate-100 relative"><p class="text-slate-500 text-xs font-semibold mb-1">Jam Pulang</p><p class="text-2xl md:text-3xl font-black text-slate-800">${(myAtt && myAtt.clockOut) ? myAtt.clockOut : '--:--'}</p></div>
                         </div>
-                        
                         <div class="bg-indigo-50 rounded-2xl p-4 flex items-center justify-between border border-indigo-100 mb-5 shadow-sm">
-                            <div class="flex items-center gap-3">
-                                <div class="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center shadow-inner"><i data-lucide="clock" class="w-5 h-5"></i></div>
-                                <div>
-                                    <p class="text-indigo-800 text-xs font-bold">Total Lembur (Bulan Ini)</p>
-                                    <p class="text-indigo-600/80 text-[10px] font-semibold tracking-wide uppercase">Pulang lewat batas shift</p>
-                                </div>
-                            </div>
-                            <div class="text-right">
-                                <p class="text-lg md:text-xl font-black text-indigo-700">${jamLembur}<span class="text-xs font-bold text-indigo-500">j</span> ${sisaMenitLembur}<span class="text-xs font-bold text-indigo-500">m</span></p>
-                            </div>
+                            <div class="flex items-center gap-3"><div class="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center shadow-inner"><i data-lucide="clock" class="w-5 h-5"></i></div><div><p class="text-indigo-800 text-xs font-bold">Total Lembur (Bulan Ini)</p><p class="text-indigo-600/80 text-[10px] font-semibold tracking-wide uppercase">Pulang lewat batas shift</p></div></div>
+                            <div class="text-right"><p class="text-lg md:text-xl font-black text-indigo-700">${jamLembur}<span class="text-xs font-bold text-indigo-500">j</span> ${sisaMenitLembur}<span class="text-xs font-bold text-indigo-500">m</span></p></div>
                         </div>
-
                         <div class="flex gap-3">
-                            <button onclick="window.bukaKameraAbsen('in')" class="${(myAtt || myLeave) ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-emerald-500 text-white hover:bg-emerald-600 shadow-[0_8px_16px_rgba(16,185,129,0.3)]'} flex-1 font-bold py-3 md:py-4 rounded-xl transition-all active:scale-95 flex flex-col items-center justify-center gap-1" ${(myAtt || myLeave) ? 'disabled' : ''}>
-                                <i data-lucide="scan-face" class="w-5 h-5"></i><span class="text-[10px] md:text-xs uppercase tracking-wider">Absen Masuk</span>
-                            </button>
-                            <button onclick="window.bukaKameraAbsen('out')" class="${(!myAtt || (myAtt.clockOut && myAtt.clockOut !== '-' && myAtt.clockOut !== '--:--')) ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-rose-500 text-white hover:bg-rose-600 shadow-[0_8px_16px_rgba(244,63,94,0.3)]'} flex-1 font-bold py-3 md:py-4 rounded-xl transition-all active:scale-95 flex flex-col items-center justify-center gap-1" ${(!myAtt || (myAtt.clockOut && myAtt.clockOut !== '-' && myAtt.clockOut !== '--:--')) ? 'disabled' : ''}>
-                                <i data-lucide="scan-face" class="w-5 h-5"></i><span class="text-[10px] md:text-xs uppercase tracking-wider">Absen Pulang</span>
-                            </button>
+                            <button onclick="window.bukaKameraAbsen('in')" class="${(myAtt || myLeave) ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-emerald-500 text-white hover:bg-emerald-600 shadow-[0_8px_16px_rgba(16,185,129,0.3)]'} flex-1 font-bold py-3 md:py-4 rounded-xl transition-all active:scale-95 flex flex-col items-center justify-center gap-1" ${(myAtt || myLeave) ? 'disabled' : ''}><i data-lucide="scan-face" class="w-5 h-5"></i><span class="text-[10px] md:text-xs uppercase tracking-wider">Absen Masuk</span></button>
+                            <button onclick="window.bukaKameraAbsen('out')" class="${(!myAtt || (myAtt.clockOut && myAtt.clockOut !== '-' && myAtt.clockOut !== '--:--')) ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-rose-500 text-white hover:bg-rose-600 shadow-[0_8px_16px_rgba(244,63,94,0.3)]'} flex-1 font-bold py-3 md:py-4 rounded-xl transition-all active:scale-95 flex flex-col items-center justify-center gap-1" ${(!myAtt || (myAtt.clockOut && myAtt.clockOut !== '-' && myAtt.clockOut !== '--:--')) ? 'disabled' : ''}><i data-lucide="scan-face" class="w-5 h-5"></i><span class="text-[10px] md:text-xs uppercase tracking-wider">Absen Pulang</span></button>
                         </div>
-                        
-                        ${!myAtt && (!myLeave || myLeave.status === 'Ditolak') ? `
-                        <button onclick="window.bukaFormIzin()" class="mt-4 w-full bg-blue-50 text-blue-600 font-bold py-3 rounded-xl text-xs flex items-center justify-center gap-2 border border-blue-100 hover:bg-blue-100 transition shadow-sm">
-                            <i data-lucide="file-edit" class="w-4 h-4"></i> Berhalangan Hadir? Ajukan Izin / Sakit
-                        </button>` : (myLeave && myLeave.status === 'Pending' ? `<div class="mt-4 p-3 bg-amber-50 text-amber-600 text-xs font-bold rounded-xl border border-amber-100 text-center"><i data-lucide="clock" class="w-4 h-4 inline mb-1"></i> Pengajuan ${myLeave.type} Menunggu Persetujuan</div>` : '')}
-                    </div>
-                `;
+                        <button onclick="window.bukaFormIzin()" class="mt-4 w-full bg-blue-50 text-blue-600 font-bold py-3 rounded-xl text-xs flex items-center justify-center gap-2 border border-blue-100 hover:bg-blue-100 transition shadow-sm"><i data-lucide="file-edit" class="w-4 h-4"></i> Ajukan Izin / Libur Kapan Saja</button>
+                    </div>`;
             }
 
             let userPhotoUrl = window.getSafeImageUrl(user.profilePhoto);
-            
-            let avatarDashboard = (userPhotoUrl && userPhotoUrl !== '') 
-                ? `<img src="${userPhotoUrl}" class="w-14 h-14 rounded-full object-cover shadow-inner border-2 border-blue-200 flex-shrink-0">` 
-                : `<div class="w-14 h-14 bg-white rounded-full flex items-center justify-center font-bold text-2xl text-blue-600 shadow-inner border-2 border-blue-200 flex-shrink-0">${user.name.charAt(0)}</div>`;
+            let avatarDashboard = (userPhotoUrl && userPhotoUrl !== '') ? `<img src="${userPhotoUrl}" class="w-14 h-14 rounded-full object-cover shadow-inner border-2 border-blue-200 flex-shrink-0">` : `<div class="w-14 h-14 bg-white rounded-full flex items-center justify-center font-bold text-2xl text-blue-600 shadow-inner border-2 border-blue-200 flex-shrink-0">${user.name.charAt(0)}</div>`;
 
             container.innerHTML = `
                 <div class="bg-blue-600 pt-8 pb-20 px-5 md:px-10 rounded-b-[2.5rem] md:rounded-b-[4rem] shadow-lg relative z-0">
                     <div class="flex justify-between items-center mb-6">
-                        <div class="flex items-center gap-2">
-                            ${user.role === 'admin' ? `<button onclick="window.bukaAdminMenu()" class="text-white hover:bg-blue-500/50 p-2 rounded-xl transition active:scale-90"><i data-lucide="menu" class="w-7 h-7"></i></button>` : `<div class="w-7 h-7"></div>`}
-                        </div>
+                        <div class="flex items-center gap-2">${user.role === 'admin' ? `<button onclick="window.bukaAdminMenu()" class="text-white hover:bg-blue-500/50 p-2 rounded-xl transition active:scale-90"><i data-lucide="menu" class="w-7 h-7"></i></button>` : `<div class="w-7 h-7"></div>`}</div>
                         <h2 class="text-white font-bold text-lg tracking-wide">${window.appState.settings.companyName}</h2>
                         <button onclick="window.syncData(true)" class="text-white relative p-2 hover:bg-blue-500/50 rounded-xl transition active:scale-90"><i id="btn-sync" data-lucide="refresh-cw" class="w-6 h-6"></i></button>
                     </div>
@@ -676,63 +465,34 @@
                         </div>
                     </div>
                 </div>
-
                 <div class="px-5 md:px-10 -mt-12 relative z-10 fade-in">
                     <div class="md:grid md:grid-cols-12 md:gap-6">
-                        <div class="md:col-span-5 mb-6 md:mb-0">
-                            ${leftPanelHtml}
-                        </div>
-
+                        <div class="md:col-span-5 mb-6 md:mb-0">${leftPanelHtml}</div>
                         <div class="md:col-span-7 flex flex-col gap-6">
                             <div class="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 flex-1 flex flex-col justify-center">
                                 <div class="flex justify-between items-center mb-5">
-                                    <div>
-                                        <h3 class="font-bold text-slate-800 text-sm md:text-base">${user.role === 'admin' ? 'Tingkat Kehadiran Tim' : 'Grafik Kehadiran Pribadi'}</h3>
-                                        <p class="text-[10px] md:text-xs text-slate-400">7 Hari Terakhir</p>
-                                    </div>
-                                    <div class="flex items-center gap-2 text-[10px] md:text-xs font-semibold text-slate-500">
-                                        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full ${user.role === 'admin' ? 'bg-indigo-400' : 'bg-emerald-500'}"></span> Hadir</span>
-                                    </div>
+                                    <div><h3 class="font-bold text-slate-800 text-sm md:text-base">${user.role === 'admin' ? 'Tingkat Kehadiran Tim' : 'Grafik Kehadiran Pribadi'}</h3><p class="text-[10px] md:text-xs text-slate-400">7 Hari Terakhir</p></div>
+                                    <div class="flex items-center gap-2 text-[10px] md:text-xs font-semibold text-slate-500"><span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full ${user.role === 'admin' ? 'bg-indigo-400' : 'bg-emerald-500'}"></span> Hadir</span></div>
                                 </div>
                                 <div class="flex items-end justify-between h-32 md:h-40 gap-3 pt-2">${chartHtml}</div>
                             </div>
                         </div>
                     </div>
-                </div>
-            `;
+                </div>`;
         };
 
         window.bukaKameraAbsen = function(type) {
             const user = window.appState.currentUser;
             const now = new Date();
-            
-            const yyyy = now.getFullYear();
-            const mm = String(now.getMonth() + 1).padStart(2, '0');
-            const dd = String(now.getDate()).padStart(2, '0');
-            const todayStr = `${yyyy}-${mm}-${dd}`;
+            const todayStr = window.formatDateStandard(now);
             
             if (user.role !== 'admin') {
-                let mySchedule = window.appState.schedules.find(s => 
-                    String(s.empId).trim().toUpperCase() === String(user.id).trim().toUpperCase() && 
-                    window.formatDateStandard(s.date) === todayStr
-                );
-                
+                let mySchedule = window.appState.schedules.find(s => String(s.empId).trim().toUpperCase() === String(user.id).trim().toUpperCase() && window.formatDateStandard(s.date) === todayStr);
                 if (!mySchedule) {
                     let modal = document.createElement('div');
                     modal.className = 'fixed inset-0 bg-slate-900/80 z-[120] flex items-center justify-center p-4 fade-in backdrop-blur-sm';
-                    modal.innerHTML = `
-                        <div class="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl slide-up text-center border border-slate-100">
-                            <div class="w-16 h-16 bg-rose-100 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm border-4 border-white">
-                                <i data-lucide="calendar-x" class="w-8 h-8"></i>
-                            </div>
-                            <h3 class="font-bold text-lg text-slate-800 mb-2">Akses Ditolak</h3>
-                            <p class="text-sm text-slate-500 mb-6">Maaf, hari ini Anda belum ada jadwal.<br>Mohon konfirmasi ke HRD.</p>
-                            <button onclick="this.closest('.fixed').remove()" class="w-full bg-slate-100 text-slate-600 font-bold py-3.5 rounded-xl hover:bg-slate-200 text-sm transition">Mengerti</button>
-                        </div>
-                    `;
-                    document.body.appendChild(modal);
-                    if(window.lucide) lucide.createIcons();
-                    return; 
+                    modal.innerHTML = `<div class="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl slide-up text-center border border-slate-100"><div class="w-16 h-16 bg-rose-100 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm border-4 border-white"><i data-lucide="calendar-x" class="w-8 h-8"></i></div><h3 class="font-bold text-lg text-slate-800 mb-2">Akses Ditolak</h3><p class="text-sm text-slate-500 mb-6">Maaf, hari ini Anda belum ada jadwal.<br>Mohon konfirmasi ke HRD.</p><button onclick="this.closest('.fixed').remove()" class="w-full bg-slate-100 text-slate-600 font-bold py-3.5 rounded-xl hover:bg-slate-200 text-sm transition">Mengerti</button></div>`;
+                    document.body.appendChild(modal); if(window.lucide) lucide.createIcons(); return; 
                 }
             }
             lanjutBukaKamera(type);
@@ -754,8 +514,9 @@
                         <video id="kamera-video" autoplay playsinline class="w-full h-full object-cover transform scale-x-[-1]"></video>
                         <canvas id="face-canvas" class="absolute top-0 left-0 w-full h-full object-cover transform scale-x-[-1] z-10 pointer-events-none"></canvas>
                         <div class="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-                            <div id="scan-frame" class="w-64 h-64 border-2 border-dashed border-rose-400 rounded-2xl relative transition-colors duration-300">
+                            <div id="scan-frame" class="w-64 h-64 border-2 border-dashed border-rose-400 rounded-2xl relative transition-all duration-300 overflow-hidden flex flex-col justify-end">
                                 <div class="absolute top-0 left-0 w-full h-1 bg-white opacity-60 shadow-[0_0_15px_currentColor] animate-[scan_2s_ease-in-out_infinite]"></div>
+                                <div class="w-full h-2 bg-slate-800/80 backdrop-blur relative z-20"><div id="scan-progress" class="h-full bg-emerald-400 transition-all duration-100 ease-linear w-0"></div></div>
                             </div>
                         </div>
                         <canvas id="kamera-canvas" class="hidden"></canvas>
@@ -764,10 +525,8 @@
                         <p id="kamera-status" class="text-rose-400 text-sm font-medium animate-pulse"><i data-lucide="scan-face" class="w-4 h-4 inline mb-1"></i> Arahkan Wajah ke Kamera...</p>
                         <button id="btn-capture" onclick="window.ambilFotoAbsen('${type}', '${accentColor}')" class="w-20 h-20 bg-white/50 rounded-full border-4 border-slate-500 flex items-center justify-center transition cursor-not-allowed" disabled><div class="w-16 h-16 border-2 border-slate-400 rounded-full"></div></button>
                     </div>
-                </div>
-            `;
-            document.body.appendChild(modal);
-            lucide.createIcons();
+                </div>`;
+            document.body.appendChild(modal); lucide.createIcons();
 
             let constraints = { video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } } };
             navigator.mediaDevices.getUserMedia(constraints).then(stream => {
@@ -794,47 +553,78 @@
         window.mulaiDeteksiWajah = function() {
             let video = document.getElementById('kamera-video');
             let canvas = document.getElementById('face-canvas');
-            let context = canvas.getContext('2d');
             
             let tracker = new tracking.ObjectTracker('face');
             tracker.setInitialScale(4); tracker.setStepSize(2); tracker.setEdgesDensity(0.1);
 
             window.trackerTask = tracking.track('#kamera-video', tracker);
-            window.lastFaceDetectTime = 0;
+            window.faceHoldStartTime = 0;
+            window.lastFaceRect = null;
 
             tracker.on('track', function(event) {
+                if (canvas.width !== video.clientWidth) {
+                    canvas.width = video.clientWidth;
+                    canvas.height = video.clientHeight;
+                }
+                let context = canvas.getContext('2d');
                 context.clearRect(0, 0, canvas.width, canvas.height);
-                let now = Date.now();
                 let btn = document.getElementById('btn-capture');
                 let status = document.getElementById('kamera-status');
                 let frame = document.getElementById('scan-frame');
+                let progressLine = document.getElementById('scan-progress');
 
                 if (event.data.length > 0) {
-                    window.lastFaceDetectTime = now;
-                    event.data.forEach(function(rect) {
-                        context.strokeStyle = '#10b981'; context.lineWidth = 2;
-                        context.strokeRect(rect.x, rect.y, rect.width, rect.height);
-                    });
-                }
+                    let rect = event.data.reduce((prev, current) => (prev.width > current.width) ? prev : current);
+                    
+                    let centerX = canvas.width / 2; let centerY = canvas.height / 2;
+                    let faceCenterX = rect.x + (rect.width / 2); let faceCenterY = rect.y + (rect.height / 2);
+                    let inFrame = Math.abs(centerX - faceCenterX) < (canvas.width * 0.25) && Math.abs(centerY - faceCenterY) < (canvas.height * 0.25);
+                    
+                    let stable = true;
+                    if(window.lastFaceRect) {
+                        let dx = Math.abs(rect.x - window.lastFaceRect.x); let dy = Math.abs(rect.y - window.lastFaceRect.y);
+                        if (dx > 15 || dy > 15) stable = false;
+                    }
+                    window.lastFaceRect = rect;
 
-                if (now - window.lastFaceDetectTime < 1000) {
-                    if(btn.disabled) {
-                        status.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4 inline mb-1"></i> Wajah Terdeteksi! Silakan Tekan Tombol`;
-                        status.className = "text-emerald-400 text-sm font-bold";
-                        btn.disabled = false; btn.className = "w-20 h-20 bg-white rounded-full border-4 border-emerald-300 flex items-center justify-center active:scale-90 transition shadow-[0_0_20px_rgba(16,185,129,0.5)] cursor-pointer";
-                        frame.className = "w-64 h-64 border-2 border-solid border-emerald-400 rounded-2xl relative shadow-[inset_0_0_20px_rgba(16,185,129,0.4)]";
-                        if(window.lucide) lucide.createIcons();
-                    }
-                } else {
-                    if(!btn.disabled) {
-                        status.innerHTML = `<i data-lucide="scan-face" class="w-4 h-4 inline mb-1"></i> Wajah Tidak Ditemukan`;
-                        status.className = "text-rose-400 text-sm font-medium animate-pulse";
-                        btn.disabled = true; btn.className = "w-20 h-20 bg-white/50 rounded-full border-4 border-slate-500 flex items-center justify-center transition cursor-not-allowed";
-                        frame.className = "w-64 h-64 border-2 border-dashed border-rose-400 rounded-2xl relative";
-                        if(window.lucide) lucide.createIcons();
-                    }
-                }
+                    if (inFrame && stable) {
+                        context.strokeStyle = '#10b981'; context.lineWidth = 3;
+                        context.strokeRect(rect.x, rect.y, rect.width, rect.height);
+
+                        if (window.faceHoldStartTime === 0) window.faceHoldStartTime = Date.now();
+                        let elapsed = Date.now() - window.faceHoldStartTime;
+                        let percent = Math.min(100, (elapsed / 3000) * 100);
+                        if (progressLine) progressLine.style.width = percent + '%';
+
+                        if (elapsed >= 3000) {
+                            status.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4 inline mb-1"></i> Sempurna! Silakan Tekan Tombol.`; status.className = "text-emerald-400 text-sm font-bold";
+                            btn.disabled = false; btn.className = "w-20 h-20 bg-white rounded-full border-4 border-emerald-300 flex items-center justify-center active:scale-90 transition shadow-[0_0_20px_rgba(16,185,129,0.5)] cursor-pointer";
+                            frame.className = "w-64 h-64 border-2 border-solid border-emerald-400 rounded-2xl relative shadow-[inset_0_0_20px_rgba(16,185,129,0.4)] overflow-hidden flex flex-col justify-end";
+                            if(window.lucide) lucide.createIcons();
+                        } else {
+                            let timeLeft = Math.ceil((3000 - elapsed) / 1000);
+                            status.innerHTML = `<i data-lucide="scan-face" class="w-4 h-4 inline mb-1"></i> Tahan wajah... ${timeLeft}s`; status.className = "text-amber-400 text-sm font-bold";
+                            btn.disabled = true; btn.className = "w-20 h-20 bg-white/50 rounded-full border-4 border-slate-500 flex items-center justify-center transition cursor-not-allowed";
+                            frame.className = "w-64 h-64 border-2 border-dashed border-amber-400 rounded-2xl relative shadow-[inset_0_0_20px_rgba(251,191,36,0.3)] overflow-hidden flex flex-col justify-end";
+                        }
+                    } else { resetDetectionState(context, rect); }
+                } else { resetDetectionState(context, null); }
             });
+
+            function resetDetectionState(ctx, rect) {
+                window.faceHoldStartTime = 0; window.lastFaceRect = null;
+                let btn = document.getElementById('btn-capture'), status = document.getElementById('kamera-status'), frame = document.getElementById('scan-frame'), progressLine = document.getElementById('scan-progress');
+                if (progressLine) progressLine.style.width = '0%';
+                if (rect) {
+                    ctx.strokeStyle = '#f43f5e'; ctx.lineWidth = 2; ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+                    status.innerHTML = `<i data-lucide="alert-circle" class="w-4 h-4 inline mb-1"></i> Jangan Goyang & Posisikan di Tengah!`; status.className = "text-rose-400 text-sm font-bold animate-pulse";
+                } else {
+                    status.innerHTML = `<i data-lucide="scan-face" class="w-4 h-4 inline mb-1"></i> Wajah Tidak Ditemukan`; status.className = "text-rose-400 text-sm font-medium animate-pulse";
+                }
+                btn.disabled = true; btn.className = "w-20 h-20 bg-white/50 rounded-full border-4 border-slate-500 flex items-center justify-center transition cursor-not-allowed";
+                frame.className = "w-64 h-64 border-2 border-dashed border-rose-400 rounded-2xl relative overflow-hidden flex flex-col justify-end";
+                if(window.lucide) lucide.createIcons();
+            }
         };
 
         window.tutupKamera = function() {
@@ -857,50 +647,25 @@
             btnCapture.disabled = true; btnCapture.classList.add('opacity-50');
             lucide.createIcons();
 
-            setTimeout(() => {
-                window.tutupKamera();
-                window.prosesAbsen(type, fotoBase64);
-            }, 1000); 
+            setTimeout(() => { window.tutupKamera(); window.prosesAbsen(type, fotoBase64); }, 1000); 
         };
 
         window.prosesAbsen = async function(type, fotoData) {
             const user = window.appState.currentUser;
             const now = new Date();
             const dateStr = window.formatDateStandard(now);
-            
             const timeStr = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
 
             window.showToast("Mengirim data absensi ke Server...", "info");
 
-            if (type === 'in') {
-                window.appState.attendances.push({
-                    id: 'TEMP_' + Date.now(),
-                    date: dateStr,
-                    empId: user.id,
-                    clockIn: timeStr,
-                    clockOut: '-',
-                    status: 'Hadir',
-                    photoIn: fotoData || '-',
-                    photoOut: '-'
-                });
-            } else if (type === 'out') {
+            if (type === 'in') window.appState.attendances.push({ id: 'TEMP_' + Date.now(), date: dateStr, empId: user.id, clockIn: timeStr, clockOut: '-', status: 'Hadir', photoIn: fotoData || '-', photoOut: '-' });
+            else if (type === 'out') {
                 let att = window.appState.attendances.find(a => String(a.empId).trim().toUpperCase() === String(user.id).trim().toUpperCase() && window.formatDateStandard(a.date) === dateStr);
-                if (att) {
-                    att.clockOut = timeStr;
-                    att.photoOut = fotoData || '-';
-                }
+                if (att) { att.clockOut = timeStr; att.photoOut = fotoData || '-'; }
             }
             window.renderApp();
 
-            let dataToSend = {
-                action: "absen",
-                id_user: user.id, tanggal: dateStr,
-                jam_masuk: type === 'in' ? timeStr : "-",
-                jam_pulang: type === 'out' ? timeStr : "-",
-                status: "Hadir", lokasi: "Kantor", keterangan: "Tepat Waktu",
-                foto: fotoData || "-"
-            };
-
+            let dataToSend = { action: "absen", id_user: user.id, tanggal: dateStr, jam_masuk: type === 'in' ? timeStr : "-", jam_pulang: type === 'out' ? timeStr : "-", status: "Hadir", lokasi: "Kantor", keterangan: "Tepat Waktu", foto: fotoData || "-" };
             try {
                 await fetch(DB_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(dataToSend) });
                 window.showToast(`Berhasil Absen ${type === 'in' ? 'Masuk' : 'Pulang'}: ${timeStr}`, "success");
@@ -913,107 +678,85 @@
             let atts = window.appState.attendances.slice().reverse();
             if (user.role !== 'admin') atts = atts.filter(a => String(a.empId).trim().toUpperCase() === String(user.id).trim().toUpperCase());
 
-            let html = `<div class="bg-blue-600 pt-8 pb-16 px-5 md:px-10 rounded-b-[2rem] md:rounded-b-[3rem] shadow-md relative z-0"><h2 class="text-white font-bold text-xl md:text-2xl tracking-wide">Rekap Kehadiran & Lembur</h2></div>
-                        <div class="px-5 md:px-10 -mt-10 relative z-10 fade-in pb-24"><div class="bg-white rounded-2xl p-2 md:p-6 shadow-md border border-slate-100 min-h-[300px]"><div class="md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-4">`;
+            let html = `<div class="bg-blue-600 pt-8 pb-16 px-5 md:px-10 rounded-b-[2rem] md:rounded-b-[3rem] shadow-md relative z-0"><h2 class="text-white font-bold text-xl md:text-2xl tracking-wide">Rekap Kehadiran & Lembur</h2></div><div class="px-5 md:px-10 -mt-10 relative z-10 fade-in pb-24"><div class="bg-white rounded-2xl p-2 md:p-6 shadow-md border border-slate-100 min-h-[300px]"><div class="md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-4">`;
             
             if (atts.length === 0) html += `<div class="col-span-full p-8 text-center text-slate-400 text-sm font-medium">Belum ada riwayat absensi.</div>`;
             else {
                 atts.forEach(a => {
                     let emp = window.appState.employees.find(e => String(e.id).trim().toUpperCase() === String(a.empId).trim().toUpperCase());
                     let empName = emp ? emp.name : 'Unknown';
-                    let fotoHtml = '';
-                    let lemburHarianHtml = '';
-                    
+                    let fotoHtml = ''; let lemburHarianHtml = '';
                     let cleanDate = window.formatDateStandard(a.date);
+                    let sched = window.appState.schedules.find(s => String(s.empId).trim().toUpperCase() === String(a.empId).trim().toUpperCase() && window.formatDateStandard(s.date) === cleanDate);
                     
-                    let sched = window.appState.schedules.find(s => 
-                        String(s.empId).trim().toUpperCase() === String(a.empId).trim().toUpperCase() && 
-                        window.formatDateStandard(s.date) === cleanDate
-                    );
-                    
-                    let sStart = null, sEnd = null; 
-                    let shiftName = "Belum Ada Jadwal"; 
-                    let isValidShift = false;
-                    
+                    let sStart = null, sEnd = null, shiftName = "Belum Ada Jadwal", isValidShift = false;
                     if(sched) {
                         let sh = window.appState.shifts.find(s => String(s.id).trim().toUpperCase() === String(sched.shiftId).trim().toUpperCase());
-                        if(sh) { 
-                            sStart = String(sh.startTime).trim(); 
-                            sEnd = String(sh.endTime).trim(); 
-                            shiftName = sh.name;
-                            isValidShift = true;
-                        } else {
-                            shiftName = `Shift [${sched.shiftId}] sudah terhapus di Master Shift. Atur ulang jadwal!`;
-                        }
+                        if(sh) { sStart = String(sh.startTime).trim(); sEnd = String(sh.endTime).trim(); shiftName = sh.name; isValidShift = true; } 
+                        else shiftName = `Shift [${sched.shiftId}] sudah terhapus di Master Shift. Atur ulang jadwal!`;
                     }
 
                     let lemburMins = isValidShift ? window.hitungLembur(a.clockIn, a.clockOut, sStart, sEnd) : 0;
                     
                     if(lemburMins > 0) {
                         let j = Math.floor(lemburMins/60), m = lemburMins%60;
-                        lemburHarianHtml = `
-                        <div class="bg-indigo-100 text-indigo-700 px-2 py-1.5 rounded-lg text-[10px] shadow-sm flex flex-col mt-2">
-                            <span class="font-bold"><i data-lucide="clock" class="w-3 h-3 inline"></i> Lembur Valid: ${j} Jam ${m} Menit</span>
-                            <span class="text-[8px] font-medium opacity-80 mt-1">Pulang (${a.clockOut}) melewati batas shift (${sEnd}).</span>
-                            <span class="text-[8px] font-bold opacity-60 mt-0.5">Info Shift: ${shiftName}</span>
-                        </div>`;
+                        lemburHarianHtml = `<div class="bg-indigo-100 text-indigo-700 px-2 py-1.5 rounded-lg text-[10px] shadow-sm flex flex-col mt-2"><span class="font-bold"><i data-lucide="clock" class="w-3 h-3 inline"></i> Lembur Valid: ${j} Jam ${m} Menit</span><span class="text-[8px] font-medium opacity-80 mt-1">Pulang (${a.clockOut}) melewati batas shift (${sEnd}).</span><span class="text-[8px] font-bold opacity-60 mt-0.5">Info Shift: ${shiftName}</span></div>`;
                     } else if (a.clockOut && a.clockOut !== '-' && a.clockOut !== '--:--') {
-                        lemburHarianHtml = `
-                        <div class="${isValidShift ? 'bg-slate-50 border-slate-100 text-slate-400' : 'bg-rose-50 border-rose-200 text-rose-500'} px-2 py-1.5 rounded-lg text-[9px] shadow-sm flex flex-col mt-2 border">
-                            <span class="font-bold">Lembur: 0 Jam</span>
-                            <span class="text-[8px] font-medium opacity-80">${isValidShift ? `Pulang lebih awal/tepat waktu dari shift ${sEnd}` : `<span class="font-bold">${shiftName}</span>`}</span>
-                        </div>`;
+                        lemburHarianHtml = `<div class="${isValidShift ? 'bg-slate-50 border-slate-100 text-slate-400' : 'bg-rose-50 border-rose-200 text-rose-500'} px-2 py-1.5 rounded-lg text-[9px] shadow-sm flex flex-col mt-2 border"><span class="font-bold">Lembur: 0 Jam</span><span class="text-[8px] font-medium opacity-80">${isValidShift ? `Pulang lebih awal/tepat waktu dari shift ${sEnd}` : `<span class="font-bold">${shiftName}</span>`}</span></div>`;
                     }
 
-                    if (user.role === 'admin') {
-                        fotoHtml = `<div class="flex gap-2 mt-3 pt-3 border-t border-slate-100 w-full">${a.photoIn && a.photoIn !== '-' ? `<button onclick="window.lihatFoto('${a.photoIn}')" class="flex-1 bg-blue-50 hover:bg-blue-100 text-blue-600 text-[10px] font-bold py-2 rounded border border-blue-100 flex items-center justify-center gap-1 transition"><i data-lucide="image" class="w-3 h-3"></i> MASUK</button>` : ''}${a.photoOut && a.photoOut !== '-' ? `<button onclick="window.lihatFoto('${a.photoOut}')" class="flex-1 bg-amber-50 hover:bg-amber-100 text-amber-600 text-[10px] font-bold py-2 rounded border border-amber-100 flex items-center justify-center gap-1 transition"><i data-lucide="image" class="w-3 h-3"></i> PULANG</button>` : ''}</div>`;
-                    }
+                    if (user.role === 'admin') fotoHtml = `<div class="flex gap-2 mt-3 pt-3 border-t border-slate-100 w-full">${a.photoIn && a.photoIn !== '-' ? `<button onclick="window.lihatFoto('${a.photoIn}')" class="flex-1 bg-blue-50 hover:bg-blue-100 text-blue-600 text-[10px] font-bold py-2 rounded border border-blue-100 flex items-center justify-center gap-1 transition"><i data-lucide="image" class="w-3 h-3"></i> MASUK</button>` : ''}${a.photoOut && a.photoOut !== '-' ? `<button onclick="window.lihatFoto('${a.photoOut}')" class="flex-1 bg-amber-50 hover:bg-amber-100 text-amber-600 text-[10px] font-bold py-2 rounded border border-amber-100 flex items-center justify-center gap-1 transition"><i data-lucide="image" class="w-3 h-3"></i> PULANG</button>` : ''}</div>`;
 
-                    html += `
-                        <div class="p-4 border-b md:border border-slate-50 md:border-slate-100 md:rounded-2xl last:border-0 md:last:border hover:bg-slate-50 transition md:shadow-sm flex flex-col justify-between">
-                            <div class="flex justify-between items-start mb-2">
-                                <div>
-                                    <h4 class="font-bold text-slate-700 text-sm md:text-base">${user.role === 'admin' ? empName : a.date}</h4>
-                                    ${user.role === 'admin' ? `<p class="text-[10px] md:text-xs text-slate-400 font-medium">${a.date}</p>` : ''}
-                                </div>
-                                <div class="flex flex-col items-end gap-1">
-                                    <span class="px-2 py-0.5 ${a.status === 'Hadir' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'} text-[10px] font-bold rounded-full uppercase tracking-wider">${a.status}</span>
-                                </div>
-                            </div>
-                            <div class="flex justify-between items-center mt-2">
-                                <p class="text-xs text-slate-500 flex items-center gap-3">
-                                    <span class="inline-flex items-center gap-1"><i data-lucide="arrow-right-circle" class="w-4 h-4 text-emerald-500"></i> ${a.clockIn}</span>
-                                    <span class="inline-flex items-center gap-1"><i data-lucide="arrow-left-circle" class="w-4 h-4 text-rose-500"></i> ${a.clockOut || '--:--'}</span>
-                                </p>
-                            </div>
-                            ${lemburHarianHtml}
-                            ${fotoHtml}
-                        </div>`;
+                    html += `<div class="p-4 border-b md:border border-slate-50 md:border-slate-100 md:rounded-2xl last:border-0 md:last:border hover:bg-slate-50 transition md:shadow-sm flex flex-col justify-between"><div class="flex justify-between items-start mb-2"><div><h4 class="font-bold text-slate-700 text-sm md:text-base">${user.role === 'admin' ? empName : a.date}</h4>${user.role === 'admin' ? `<p class="text-[10px] md:text-xs text-slate-400 font-medium">${a.date}</p>` : ''}</div><div class="flex flex-col items-end gap-1"><span class="px-2 py-0.5 ${a.status === 'Hadir' ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'} text-[10px] font-bold rounded-full uppercase tracking-wider">${a.status}</span></div></div><div class="flex justify-between items-center mt-2"><p class="text-xs text-slate-500 flex items-center gap-3"><span class="inline-flex items-center gap-1"><i data-lucide="arrow-right-circle" class="w-4 h-4 text-emerald-500"></i> ${a.clockIn}</span><span class="inline-flex items-center gap-1"><i data-lucide="arrow-left-circle" class="w-4 h-4 text-rose-500"></i> ${a.clockOut || '--:--'}</span></p></div>${lemburHarianHtml}${fotoHtml}</div>`;
                 });
             }
-            html += `</div></div></div>`; container.innerHTML = html;
-            if(window.lucide) lucide.createIcons();
+            html += `</div></div></div>`; container.innerHTML = html; if(window.lucide) lucide.createIcons();
         };
 
         window.lihatFoto = function(url) {
             if(url.startsWith('Gagal')) return window.showToast("Gagal menyimpan foto ke Drive sebelumnya.", "error");
-            
-            // Menggunakan penarik gambar khusus anti-blokir
             let imgUrl = window.getSafeImageUrl(url);
+            let modal = document.createElement('div'); modal.className = 'fixed inset-0 bg-slate-900/90 z-[120] flex items-center justify-center fade-in p-4';
+            modal.innerHTML = `<div class="relative max-w-lg w-full"><button onclick="this.closest('.fixed').remove()" class="absolute -top-12 right-0 text-white hover:text-rose-400 p-2"><i data-lucide="x" class="w-8 h-8"></i></button><img src="${imgUrl}" referrerpolicy="no-referrer" class="w-full rounded-2xl shadow-2xl bg-white min-h-[300px] object-contain" alt="Foto Bukti Absen" onerror="this.src='https://placehold.co/600x400/eeeeee/999999?text=Foto+Gagal+Dimuat+atau+Izin+Akses+Ditolak'"><div class="mt-4 text-center"><a href="${url}" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white rounded-xl transition font-bold text-sm border border-blue-500/30"><i data-lucide="external-link" class="w-4 h-4"></i> Buka Foto Asli di Browser</a></div></div>`;
+            document.body.appendChild(modal); lucide.createIcons();
+        };
 
-            let modal = document.createElement('div'); 
-            modal.className = 'fixed inset-0 bg-slate-900/90 z-[120] flex items-center justify-center fade-in p-4';
-            modal.innerHTML = `<div class="relative max-w-lg w-full">
-                <button onclick="this.closest('.fixed').remove()" class="absolute -top-12 right-0 text-white hover:text-rose-400 p-2"><i data-lucide="x" class="w-8 h-8"></i></button>
-                <img src="${imgUrl}" referrerpolicy="no-referrer" class="w-full rounded-2xl shadow-2xl bg-white min-h-[300px] object-contain" alt="Foto Bukti Absen" onerror="this.src='https://placehold.co/600x400/eeeeee/999999?text=Foto+Gagal+Dimuat+atau+Izin+Akses+Ditolak'">
-                <div class="mt-4 text-center">
-                    <a href="${url}" target="_blank" class="inline-flex items-center gap-2 px-4 py-2 bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white rounded-xl transition font-bold text-sm border border-blue-500/30">
-                        <i data-lucide="external-link" class="w-4 h-4"></i> Buka Foto Asli di Browser
-                    </a>
-                </div>
-            </div>`;
-            document.body.appendChild(modal); 
-            lucide.createIcons();
+        window.bukaFormIzin = function() {
+            let todayStr = window.formatDateStandard(new Date());
+            let modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-slate-900/60 z-[90] flex justify-center items-center fade-in backdrop-blur-sm p-4';
+            modal.innerHTML = `
+                <div class="bg-white w-full max-w-sm rounded-[2rem] p-6 shadow-2xl relative slide-up border border-slate-100">
+                    <button onclick="this.closest('.fixed').remove()" class="absolute top-6 right-6 p-2 bg-slate-100 rounded-full text-slate-400 hover:text-rose-500 transition"><i data-lucide="x" class="w-4 h-4"></i></button>
+                    <h3 class="font-bold text-lg text-slate-800 mb-1 flex items-center gap-2"><i data-lucide="file-edit" class="w-5 h-5 text-blue-600"></i> Pengajuan Izin / Libur</h3>
+                    <p class="text-xs text-slate-500 mb-5">Ajukan izin, sakit, atau cuti untuk tanggal tertentu.</p>
+                    
+                    <div class="space-y-4 mb-6">
+                        <div><label class="text-xs font-semibold text-slate-500 block mb-1">Pilih Tanggal</label><input type="date" id="izin-tanggal" value="${todayStr}" class="w-full border rounded-xl p-3 text-sm bg-slate-50 outline-none focus:border-blue-300"></div>
+                        <div><label class="text-xs font-semibold text-slate-500 block mb-1">Jenis Pengajuan</label><select id="izin-jenis" class="w-full border rounded-xl p-3 text-sm bg-slate-50 outline-none focus:border-blue-300"><option value="Izin">Izin Berhalangan</option><option value="Sakit">Sakit</option><option value="Libur Bulanan / Cuti">Libur Bulanan / Cuti</option></select></div>
+                        <div><label class="text-xs font-semibold text-slate-500 block mb-1">Alasan / Keterangan</label><textarea id="izin-alasan" rows="3" class="w-full border rounded-xl p-3 text-sm bg-slate-50 outline-none focus:border-blue-300" placeholder="Tulis keterangan..."></textarea></div>
+                    </div>
+                    <button onclick="window.simpanIzin(this)" class="w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl hover:bg-blue-700 text-sm shadow-lg shadow-blue-200 transition">Kirim Pengajuan</button>
+                </div>`;
+            document.body.appendChild(modal); lucide.createIcons();
+        };
+
+        window.simpanIzin = async function(btn) {
+            let tanggal = document.getElementById('izin-tanggal').value;
+            let jenis = document.getElementById('izin-jenis').value;
+            let alasan = document.getElementById('izin-alasan').value.trim();
+            if(!tanggal || !alasan) return window.showToast('Tanggal dan Keterangan wajib diisi!', 'error');
+
+            btn.innerHTML = '<i data-lucide="loader-2" class="w-5 h-5 animate-spin mx-auto"></i>'; btn.disabled = true;
+            let dateStr = window.formatDateStandard(tanggal);
+            let dataToSend = { action: "ajukan_izin", id_user: window.appState.currentUser.id, tanggal: dateStr, jenis: jenis, keterangan: alasan };
+
+            try {
+                await fetch(DB_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(dataToSend) });
+                window.showToast("Pengajuan berhasil dikirim!", "success");
+                btn.closest('.fixed').remove();
+                setTimeout(() => window.syncData(false), 1500);
+            } catch(e) { window.showToast("Gagal mengirim server!", "error"); btn.innerHTML = 'Kirim Pengajuan'; btn.disabled = false; }
         };
 
         window.renderKaryawan = function(container) {
@@ -1026,46 +769,22 @@
                 let safePos = e.position || e.jabatan || 'Staff';
                 let safeUser = e.username || e.user || '-';
                 let safePin = e.password || e.pin || '';
-                
-                // Menggunakan penarik gambar khusus
                 let empPhotoUrl = window.getSafeImageUrl(e.profilePhoto);
                 
-                let avatarEmp = (empPhotoUrl && empPhotoUrl !== '')
-                    ? `<img src="${empPhotoUrl}" class="w-12 h-12 rounded-full object-cover flex-shrink-0 shadow-sm border border-slate-200">`
-                    : `<div class="w-12 h-12 ${e.role === 'admin' ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'} rounded-full flex items-center justify-center font-bold text-xl flex-shrink-0">${safeName.charAt(0)}</div>`;
+                let avatarEmp = (empPhotoUrl && empPhotoUrl !== '') ? `<img src="${empPhotoUrl}" class="w-12 h-12 rounded-full object-cover flex-shrink-0 shadow-sm border border-slate-200">` : `<div class="w-12 h-12 ${e.role === 'admin' ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'} rounded-full flex items-center justify-center font-bold text-xl flex-shrink-0">${safeName.charAt(0)}</div>`;
 
-                html += `
-                    <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex items-center gap-4 hover:shadow-md transition">
-                        ${avatarEmp}
-                        <div class="flex-1"><h4 class="font-bold text-slate-800 text-sm md:text-base flex items-center gap-2">${safeName} ${e.role === 'admin' ? '<i data-lucide="crown" class="w-3 h-3 md:w-4 md:h-4 text-amber-500"></i>' : ''}</h4><p class="text-xs text-slate-500 font-medium">${safePos} • <span class="font-mono bg-slate-100 px-1 rounded">${safeUser}</span></p></div>
-                        <div class="flex flex-col gap-1">
-                            <button onclick="window.editKaryawan('${e.id}', '${safeName}', '${safeUser}', '${safePos}', '${safePin}', '${e.profilePhoto || ''}')" class="p-2 bg-slate-50 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"><i data-lucide="edit" class="w-4 h-4"></i></button>
-                            <button onclick="window.hapusKaryawan('${e.id}', this)" class="p-2 bg-slate-50 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
-                        </div>
-                    </div>`;
+                html += `<div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex items-center gap-4 hover:shadow-md transition">${avatarEmp}<div class="flex-1"><h4 class="font-bold text-slate-800 text-sm md:text-base flex items-center gap-2">${safeName} ${e.role === 'admin' ? '<i data-lucide="crown" class="w-3 h-3 md:w-4 md:h-4 text-amber-500"></i>' : ''}</h4><p class="text-xs text-slate-500 font-medium">${safePos} • <span class="font-mono bg-slate-100 px-1 rounded">${safeUser}</span></p></div><div class="flex flex-col gap-1"><button onclick="window.editKaryawan('${e.id}', '${safeName}', '${safeUser}', '${safePos}', '${safePin}', '${e.profilePhoto || ''}')" class="p-2 bg-slate-50 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"><i data-lucide="edit" class="w-4 h-4"></i></button><button onclick="window.hapusKaryawan('${e.id}', this)" class="p-2 bg-slate-50 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></div>`;
             });
             html += `</div></div>`; container.innerHTML = html;
         };
 
         window.hapusKaryawan = function(id, btn) {
-            window.showConfirmModal("Hapus Karyawan?", "Apakah Anda yakin ingin menghapus data karyawan ini? Tindakan ini tidak dapat dibatalkan.", async () => {
-                btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>'; 
-                btn.disabled = true;
-                
+            window.showConfirmModal("Hapus Karyawan?", "Apakah Anda yakin ingin menghapus data karyawan ini?", async () => {
+                btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>'; btn.disabled = true;
                 try {
-                    await fetch(DB_URL, { 
-                        method: 'POST', 
-                        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
-                        body: JSON.stringify({ action: "hapus_karyawan", id_user: id }) 
-                    });
-                    window.showToast("Karyawan dihapus!", "success");
-                    btn.closest('.bg-white.rounded-2xl').remove();
-                    setTimeout(() => window.syncData(false), 1500);
-                } catch(e) { 
-                    window.showToast("Gagal menghapus!", "error"); 
-                    btn.innerHTML = '<i data-lucide="trash-2" class="w-4 h-4"></i>'; 
-                    btn.disabled = false;
-                }
+                    await fetch(DB_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: "hapus_karyawan", id_user: id }) });
+                    window.showToast("Karyawan dihapus!", "success"); btn.closest('.bg-white.rounded-2xl').remove(); setTimeout(() => window.syncData(false), 1500);
+                } catch(e) { window.showToast("Gagal menghapus!", "error"); btn.innerHTML = '<i data-lucide="trash-2" class="w-4 h-4"></i>'; btn.disabled = false; }
             });
         };
 
@@ -1075,28 +794,15 @@
         window.tampilModalKaryawan = function(id = '', name = '', user = '', pos = 'Staff', pin = '', photoUrl = '') {
             let modal = document.createElement('div'); modal.className = 'fixed inset-0 bg-slate-900/60 z-[70] flex items-center justify-center p-4 fade-in backdrop-blur-sm';
             let isEdit = id !== '';
-            
             let previewHtml = `<i data-lucide="image" class="w-5 h-5"></i>`;
-            if (isEdit && photoUrl && photoUrl !== '' && photoUrl !== '-') {
-                let imgUrl = window.getSafeImageUrl(photoUrl);
-                previewHtml = `<img src="${imgUrl}" class="w-full h-full object-cover">`;
-            }
+            if (isEdit && photoUrl && photoUrl !== '' && photoUrl !== '-') { let imgUrl = window.getSafeImageUrl(photoUrl); previewHtml = `<img src="${imgUrl}" class="w-full h-full object-cover">`; }
 
             modal.innerHTML = `
                 <div class="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl slide-up text-left border border-slate-100 max-h-[90vh] overflow-y-auto">
                     <h3 class="font-bold text-lg text-slate-800 mb-4 flex items-center gap-2"><i data-lucide="${isEdit ? 'user-cog' : 'user-plus'}" class="w-5 h-5 text-blue-600"></i> ${isEdit ? 'Edit Karyawan' : 'Tambah Karyawan'}</h3>
                     <input type="hidden" id="emp-id" value="${id}">
                     <div class="space-y-3 mb-6">
-                        <div>
-                            <label class="text-xs font-semibold text-slate-500 block mb-1">Foto Profil (Opsional)</label>
-                            <div class="flex items-center gap-3">
-                                <div id="preview-foto-profil" class="w-12 h-12 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 overflow-hidden shrink-0">
-                                    ${previewHtml}
-                                </div>
-                                <input type="file" accept="image/*" class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 transition cursor-pointer" onchange="window.previewFotoProfil(this)">
-                            </div>
-                            <input type="hidden" id="emp-foto-base64" value="">
-                        </div>
+                        <div><label class="text-xs font-semibold text-slate-500 block mb-1">Foto Profil (Opsional)</label><div class="flex items-center gap-3"><div id="preview-foto-profil" class="w-12 h-12 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 overflow-hidden shrink-0">${previewHtml}</div><input type="file" accept="image/*" class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 transition cursor-pointer" onchange="window.previewFotoProfil(this)"></div><input type="hidden" id="emp-foto-base64" value=""></div>
                         <div><label class="text-xs font-semibold text-slate-500 block mb-1">Nama Lengkap</label><input type="text" id="emp-name" class="w-full border rounded-xl p-3 text-sm bg-slate-50 outline-none focus:border-blue-500" value="${name}"></div>
                         <div><label class="text-xs font-semibold text-slate-500 block mb-1">Username Login</label><input type="text" id="emp-user" class="w-full border rounded-xl p-3 text-sm bg-slate-50 outline-none focus:border-blue-500" value="${user}"></div>
                         <div><label class="text-xs font-semibold text-slate-500 block mb-1">Jabatan</label><input type="text" id="emp-pos" class="w-full border rounded-xl p-3 text-sm bg-slate-50 outline-none focus:border-blue-500" value="${pos}"></div>
@@ -1111,203 +817,102 @@
         window.previewFotoProfil = function(input) {
             if (input.files && input.files[0]) {
                 let reader = new FileReader();
-                reader.onload = function(e) {
-                    let base64 = e.target.result;
-                    document.getElementById('preview-foto-profil').innerHTML = `<img src="${base64}" class="w-full h-full object-cover">`;
-                    document.getElementById('emp-foto-base64').value = base64;
-                }
+                reader.onload = function(e) { document.getElementById('preview-foto-profil').innerHTML = `<img src="${e.target.result}" class="w-full h-full object-cover">`; document.getElementById('emp-foto-base64').value = e.target.result; }
                 reader.readAsDataURL(input.files[0]);
             }
         };
 
         window.simpanKaryawanBaru = async function(btn) {
-            let id = document.getElementById('emp-id').value;
-            let name = document.getElementById('emp-name').value.trim();
-            let username = document.getElementById('emp-user').value.trim();
-            let pos = document.getElementById('emp-pos').value.trim();
-            let pin = document.getElementById('emp-pin').value.trim();
-            let fotoProfilData = document.getElementById('emp-foto-base64').value;
-            
+            let id = document.getElementById('emp-id').value; let name = document.getElementById('emp-name').value.trim(); let username = document.getElementById('emp-user').value.trim(); let pos = document.getElementById('emp-pos').value.trim(); let pin = document.getElementById('emp-pin').value.trim(); let fotoProfilData = document.getElementById('emp-foto-base64').value;
             if(!name || !username || !pin) return window.showToast("Nama, Username, dan PIN wajib diisi!", "error");
-            
             btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin mx-auto"></i>'; btn.disabled = true;
 
-            let actionType = id ? "edit_karyawan" : "tambah_karyawan";
-            let empIdToSend = id ? id : ('EMP_' + Date.now());
+            let actionType = id ? "edit_karyawan" : "tambah_karyawan"; let empIdToSend = id ? id : ('EMP_' + Date.now());
             let dataToSend = { action: actionType, id_user: empIdToSend, nama_lengkap: name, username: username, password: pin, jabatan: pos, role: "staff", foto_profil: fotoProfilData };
-
             try {
                 await fetch(DB_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(dataToSend) });
-                btn.closest('.fixed').remove(); window.showToast("Data sukses disimpan!", "success");
-                setTimeout(() => window.syncData(false), 1500);
+                btn.closest('.fixed').remove(); window.showToast("Data sukses disimpan!", "success"); setTimeout(() => window.syncData(false), 1500);
             } catch(e) { window.showToast("Gagal menyimpan ke server!", "error"); btn.innerHTML = 'Simpan'; btn.disabled = false; }
-        };
-
-        window.bukaFormIzin = function() {
-            let modal = document.createElement('div');
-            modal.className = 'fixed inset-0 bg-slate-900/60 z-[90] flex justify-center items-center fade-in backdrop-blur-sm p-4';
-            modal.innerHTML = `
-                <div class="bg-white w-full max-w-sm rounded-[2rem] p-6 shadow-2xl relative slide-up border border-slate-100">
-                    <button onclick="this.closest('.fixed').remove()" class="absolute top-6 right-6 p-2 bg-slate-100 rounded-full text-slate-400 hover:text-rose-500 transition"><i data-lucide="x" class="w-4 h-4"></i></button>
-                    <h3 class="font-bold text-lg text-slate-800 mb-1 flex items-center gap-2"><i data-lucide="file-edit" class="w-5 h-5 text-blue-600"></i> Pengajuan Izin</h3>
-                    <p class="text-xs text-slate-500 mb-5">Ajukan izin, sakit, atau cuti hari ini.</p>
-                    
-                    <div class="space-y-4 mb-6">
-                        <div>
-                            <label class="text-xs font-semibold text-slate-500 block mb-1">Jenis Pengajuan</label>
-                            <select id="izin-jenis" class="w-full border rounded-xl p-3 text-sm bg-slate-50 outline-none focus:border-blue-300">
-                                <option value="Izin">Izin Berhalangan</option>
-                                <option value="Sakit">Sakit</option>
-                                <option value="Cuti">Cuti Tahunan</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="text-xs font-semibold text-slate-500 block mb-1">Alasan / Keterangan</label>
-                            <textarea id="izin-alasan" rows="3" class="w-full border rounded-xl p-3 text-sm bg-slate-50 outline-none focus:border-blue-300" placeholder="Tulis alasan secara singkat..."></textarea>
-                        </div>
-                    </div>
-                    <button onclick="window.simpanIzin(this)" class="w-full bg-blue-600 text-white font-bold py-3.5 rounded-xl hover:bg-blue-700 text-sm shadow-lg shadow-blue-200 transition">Kirim Pengajuan</button>
-                </div>
-            `;
-            document.body.appendChild(modal);
-            lucide.createIcons();
-        };
-
-        window.simpanIzin = async function(btn) {
-            let jenis = document.getElementById('izin-jenis').value;
-            let alasan = document.getElementById('izin-alasan').value.trim();
-            if(!alasan) return window.showToast('Keterangan wajib diisi!', 'error');
-
-            btn.innerHTML = '<i data-lucide="loader-2" class="w-5 h-5 animate-spin mx-auto"></i>'; btn.disabled = true;
-
-            const now = new Date();
-            const dateStr = window.formatDateStandard(now);
-            
-            let dataToSend = { action: "ajukan_izin", id_user: window.appState.currentUser.id, tanggal: dateStr, jenis: jenis, keterangan: alasan };
-
-            try {
-                await fetch(DB_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(dataToSend) });
-                window.showToast("Pengajuan berhasil dikirim!", "success");
-                btn.closest('.fixed').remove();
-                setTimeout(() => window.syncData(false), 1500);
-            } catch(e) { window.showToast("Gagal mengirim server!", "error"); btn.innerHTML = 'Kirim Pengajuan'; btn.disabled = false; }
         };
 
         window.bukaAdminMenu = function() {
             let modal = document.createElement('div');
-            modal.id = 'admin-drawer';
-            modal.className = 'fixed inset-0 bg-slate-900/60 z-[80] flex justify-start fade-in backdrop-blur-sm';
-            
+            modal.id = 'admin-drawer'; modal.className = 'fixed inset-0 bg-slate-900/60 z-[80] flex justify-start fade-in backdrop-blur-sm';
             let pendingCount = window.appState.leaves.filter(l => l.status === 'Pending').length;
             let badgeHtml = pendingCount > 0 ? `<span class="bg-rose-500 text-white text-[9px] font-bold px-2 py-0.5 rounded-full ml-auto animate-pulse">${pendingCount} Baru</span>` : '';
 
             modal.innerHTML = `
                 <div class="bg-white w-[85%] max-w-sm h-full shadow-2xl p-6 slide-in-left overflow-y-auto">
                     <div class="flex justify-between items-center mb-8 border-b pb-4">
-                        <div>
-                            <h3 class="font-bold text-lg text-slate-800 flex items-center gap-2">Pusat HRD</h3>
-                            <p class="text-xs text-slate-500">Administrator Only</p>
-                        </div>
+                        <div><h3 class="font-bold text-lg text-slate-800 flex items-center gap-2">Pusat HRD</h3><p class="text-xs text-slate-500">Administrator Only</p></div>
                         <button onclick="this.closest('.fixed').remove()" class="p-2 bg-slate-100 rounded-full text-slate-500 hover:bg-rose-100 hover:text-rose-600 transition"><i data-lucide="x" class="w-5 h-5"></i></button>
                     </div>
-
                     <div class="space-y-6">
                         <div>
                             <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 ml-1">Jadwal & Waktu</p>
                             <div class="space-y-2">
-                                <button onclick="window.bukaMasterShift()" class="w-full bg-slate-50 p-4 rounded-2xl flex items-center gap-4 hover:bg-blue-50 transition border border-slate-100">
-                                    <div class="w-10 h-10 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center"><i data-lucide="clock" class="w-5 h-5"></i></div>
-                                    <div class="text-left flex-1"><h4 class="font-bold text-slate-700 text-sm">Master Shift</h4><p class="text-[10px] text-slate-500 mt-0.5">Edit/Hapus Shift</p></div>
-                                </button>
-                                <button onclick="window.bukaJadwalKaryawan()" class="w-full bg-slate-50 p-4 rounded-2xl flex items-center gap-4 hover:bg-indigo-50 transition border border-slate-100">
-                                    <div class="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center"><i data-lucide="calendar-days" class="w-5 h-5"></i></div>
-                                    <div class="text-left flex-1"><h4 class="font-bold text-slate-700 text-sm">Jadwal Karyawan</h4><p class="text-[10px] text-slate-500 mt-0.5">Atur Shift Pegawai</p></div>
-                                </button>
-                                <button onclick="window.bukaKalenderJadwal()" class="w-full bg-slate-50 p-4 rounded-2xl flex items-center gap-4 hover:bg-purple-50 transition border border-slate-100">
-                                    <div class="w-10 h-10 bg-purple-100 text-purple-600 rounded-xl flex items-center justify-center"><i data-lucide="calendar" class="w-5 h-5"></i></div>
-                                    <div class="text-left flex-1"><h4 class="font-bold text-slate-700 text-sm">Kalender Jadwal</h4><p class="text-[10px] text-slate-500 mt-0.5">Lihat Jadwal Keseluruhan</p></div>
-                                </button>
+                                <button onclick="window.bukaMasterShift()" class="w-full bg-slate-50 p-4 rounded-2xl flex items-center gap-4 hover:bg-blue-50 transition border border-slate-100"><div class="w-10 h-10 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center"><i data-lucide="clock" class="w-5 h-5"></i></div><div class="text-left flex-1"><h4 class="font-bold text-slate-700 text-sm">Master Shift</h4><p class="text-[10px] text-slate-500 mt-0.5">Edit/Hapus Shift</p></div></button>
+                                <button onclick="window.bukaJadwalKaryawan()" class="w-full bg-slate-50 p-4 rounded-2xl flex items-center gap-4 hover:bg-indigo-50 transition border border-slate-100"><div class="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center"><i data-lucide="calendar-days" class="w-5 h-5"></i></div><div class="text-left flex-1"><h4 class="font-bold text-slate-700 text-sm">Jadwal Karyawan</h4><p class="text-[10px] text-slate-500 mt-0.5">Atur Shift Pegawai</p></div></button>
+                                <button onclick="window.bukaKalenderJadwal()" class="w-full bg-slate-50 p-4 rounded-2xl flex items-center gap-4 hover:bg-purple-50 transition border border-slate-100"><div class="w-10 h-10 bg-purple-100 text-purple-600 rounded-xl flex items-center justify-center"><i data-lucide="calendar" class="w-5 h-5"></i></div><div class="text-left flex-1"><h4 class="font-bold text-slate-700 text-sm">Kalender Jadwal</h4><p class="text-[10px] text-slate-500 mt-0.5">Lihat Jadwal Keseluruhan</p></div></button>
                             </div>
                         </div>
-
                         <div>
                             <p class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 ml-1">Validasi & Keuangan</p>
                             <div class="space-y-2">
-                                <button onclick="window.bukaPersetujuanIzin()" class="w-full bg-slate-50 p-4 rounded-2xl flex items-center gap-4 hover:bg-rose-50 transition border border-slate-100">
-                                    <div class="w-10 h-10 bg-rose-100 text-rose-600 rounded-xl flex items-center justify-center"><i data-lucide="clipboard-check" class="w-5 h-5"></i></div>
-                                    <div class="text-left flex-1 flex items-center"><div class="flex-1"><h4 class="font-bold text-slate-700 text-sm">Persetujuan Izin</h4><p class="text-[10px] text-slate-500 mt-0.5">Validasi Cuti/Sakit</p></div>${badgeHtml}</div>
-                                </button>
-                                <button onclick="window.bukaManajemenGaji()" class="w-full bg-slate-50 p-4 rounded-2xl flex items-center gap-4 hover:bg-emerald-50 transition border border-slate-100">
-                                    <div class="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center"><i data-lucide="wallet" class="w-5 h-5"></i></div>
-                                    <div class="text-left flex-1"><h4 class="font-bold text-slate-700 text-sm">Gaji Karyawan</h4><p class="text-[10px] text-emerald-600 font-semibold mt-0.5">Input & Cetak Slip</p></div>
-                                </button>
+                                <button onclick="window.bukaPersetujuanIzin()" class="w-full bg-slate-50 p-4 rounded-2xl flex items-center gap-4 hover:bg-rose-50 transition border border-slate-100"><div class="w-10 h-10 bg-rose-100 text-rose-600 rounded-xl flex items-center justify-center"><i data-lucide="clipboard-check" class="w-5 h-5"></i></div><div class="text-left flex-1 flex items-center"><div class="flex-1"><h4 class="font-bold text-slate-700 text-sm">Persetujuan Izin</h4><p class="text-[10px] text-slate-500 mt-0.5">Validasi Cuti/Sakit</p></div>${badgeHtml}</div></button>
+                                <button onclick="window.bukaManajemenGaji()" class="w-full bg-slate-50 p-4 rounded-2xl flex items-center gap-4 hover:bg-emerald-50 transition border border-slate-100"><div class="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center"><i data-lucide="wallet" class="w-5 h-5"></i></div><div class="text-left flex-1"><h4 class="font-bold text-slate-700 text-sm">Gaji Karyawan</h4><p class="text-[10px] text-emerald-600 font-semibold mt-0.5">Input & Cetak Slip</p></div></button>
                             </div>
                         </div>
                     </div>
-                </div>
-            `;
-            document.body.appendChild(modal);
-            lucide.createIcons();
+                </div>`;
+            document.body.appendChild(modal); lucide.createIcons();
         };
 
         window.bukaPersetujuanIzin = function() {
-            let adminDrawer = document.getElementById('admin-drawer');
-            if(adminDrawer) adminDrawer.remove();
-
+            let adminDrawer = document.getElementById('admin-drawer'); if(adminDrawer) adminDrawer.remove();
             let pendingLeaves = window.appState.leaves.filter(l => l.status === 'Pending');
             let listHtml = pendingLeaves.map(l => {
                 let emp = window.appState.employees.find(e => String(e.id).trim().toUpperCase() === String(l.empId).trim().toUpperCase());
                 let empName = emp ? emp.name : 'Unknown';
-                return `
-                <div class="bg-white p-4 rounded-xl border border-slate-100 shadow-sm mb-3">
-                    <div class="flex justify-between items-start mb-2">
-                        <div>
-                            <h4 class="font-bold text-slate-800 text-sm">${empName}</h4>
-                            <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-700 uppercase tracking-wide">${l.type}</span>
-                        </div>
-                        <span class="text-[10px] text-slate-400 font-medium">${l.date}</span>
-                    </div>
-                    <p class="text-xs text-slate-600 mb-3 bg-slate-50 p-2 rounded-lg border border-slate-100">"${l.reason}"</p>
-                    <div class="flex gap-2">
-                        <button onclick="window.prosesIzin('${l.id}', 'Ditolak', this)" class="flex-1 py-2 rounded-lg text-xs font-bold bg-rose-50 text-rose-600 hover:bg-rose-100 transition">Tolak</button>
-                        <button onclick="window.prosesIzin('${l.id}', 'Disetujui', this)" class="flex-1 py-2 rounded-lg text-xs font-bold bg-emerald-500 text-white hover:bg-emerald-600 shadow-sm transition">Setujui</button>
-                    </div>
-                </div>`;
+                return `<div class="bg-white p-4 rounded-xl border border-slate-100 shadow-sm mb-3"><div class="flex justify-between items-start mb-2"><div><h4 class="font-bold text-slate-800 text-sm">${empName}</h4><span class="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-700 uppercase tracking-wide">${l.type}</span></div><span class="text-[10px] text-slate-400 font-medium">${l.date}</span></div><p class="text-xs text-slate-600 mb-3 bg-slate-50 p-2 rounded-lg border border-slate-100">"${l.reason}"</p><div class="flex gap-2"><button onclick="window.prosesIzin('${String(l.id)}', 'Ditolak', this)" class="flex-1 py-2 rounded-lg text-xs font-bold bg-rose-50 text-rose-600 hover:bg-rose-100 transition">Tolak</button><button onclick="window.prosesIzin('${String(l.id)}', 'Disetujui', this)" class="flex-1 py-2 rounded-lg text-xs font-bold bg-emerald-500 text-white hover:bg-emerald-600 shadow-sm transition">Setujui</button></div></div>`;
             }).join('');
 
-            let modal = document.createElement('div');
-            modal.className = 'fixed inset-0 bg-slate-900/60 z-[90] flex justify-center items-center fade-in backdrop-blur-sm p-4';
-            modal.innerHTML = `
-                <div class="bg-slate-50 w-full max-w-sm rounded-[2rem] p-6 shadow-2xl relative slide-up max-h-[85vh] overflow-y-auto border border-slate-200">
-                    <button onclick="this.closest('.fixed').remove()" class="absolute top-6 right-6 p-2 bg-white rounded-full text-slate-400 hover:text-rose-500 shadow-sm transition"><i data-lucide="x" class="w-4 h-4"></i></button>
-                    <h3 class="font-bold text-lg text-slate-800 mb-1 flex items-center gap-2"><i data-lucide="clipboard-check" class="w-5 h-5 text-rose-500"></i> Persetujuan Izin</h3>
-                    <p class="text-xs text-slate-500 mb-5">Daftar pengajuan izin karyawan yang menunggu.</p>
-                    <div>${pendingLeaves.length === 0 ? `<div class="text-center py-10"><i data-lucide="check-circle" class="w-12 h-12 text-emerald-300 mx-auto mb-3"></i><p class="text-sm text-slate-400">Tidak ada pengajuan izin tertunda.</p></div>` : listHtml}</div>
-                </div>
-            `;
-            document.body.appendChild(modal);
-            lucide.createIcons();
+            let modal = document.createElement('div'); modal.className = 'fixed inset-0 bg-slate-900/60 z-[90] flex justify-center items-center fade-in backdrop-blur-sm p-4';
+            modal.innerHTML = `<div class="bg-slate-50 w-full max-w-sm rounded-[2rem] p-6 shadow-2xl relative slide-up max-h-[85vh] overflow-y-auto border border-slate-200"><button onclick="this.closest('.fixed').remove()" class="absolute top-6 right-6 p-2 bg-white rounded-full text-slate-400 hover:text-rose-500 shadow-sm transition"><i data-lucide="x" class="w-4 h-4"></i></button><h3 class="font-bold text-lg text-slate-800 mb-1 flex items-center gap-2"><i data-lucide="clipboard-check" class="w-5 h-5 text-rose-500"></i> Persetujuan Izin</h3><p class="text-xs text-slate-500 mb-5">Daftar pengajuan izin karyawan yang menunggu.</p><div>${pendingLeaves.length === 0 ? `<div class="text-center py-10"><i data-lucide="check-circle" class="w-12 h-12 text-emerald-300 mx-auto mb-3"></i><p class="text-sm text-slate-400">Tidak ada pengajuan izin tertunda.</p></div>` : listHtml}</div></div>`;
+            document.body.appendChild(modal); lucide.createIcons();
         };
 
-        window.prosesIzin = async function(id_izin, status_baru, btn) {
+        window.prosesIzin = function(id_izin, status_baru, btn) {
+            let targetId = String(id_izin);
+            let leaveIndex = window.appState.leaves.findIndex(l => String(l.id) === targetId);
+            if(leaveIndex === -1) return window.showToast("Data izin tidak ditemukan!", "error");
+            
             btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin mx-auto"></i>'; btn.disabled = true;
-            let dataToSend = { action: "update_izin", id_izin: id_izin, status_baru: status_baru, id_user: window.appState.leaves.find(l => l.id === id_izin).empId, tanggal: window.appState.leaves.find(l => l.id === id_izin).date, jenis: window.appState.leaves.find(l => l.id === id_izin).type };
-            try {
-                await fetch(DB_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(dataToSend) });
-                window.showToast(`Izin berhasil ${status_baru}!`, "success");
-                btn.closest('.bg-white').remove();
-                setTimeout(() => window.syncData(false), 1000);
-            } catch(e) { window.showToast("Gagal update ke server!", "error"); }
+            window.appState.leaves[leaveIndex].status = status_baru;
+            
+            let dataToSend = { action: "update_izin", id_izin: targetId, status_baru: status_baru, id_user: window.appState.leaves[leaveIndex].empId, tanggal: window.appState.leaves[leaveIndex].date, jenis: window.appState.leaves[leaveIndex].type };
+            
+            fetch(DB_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(dataToSend) })
+            .catch(e => console.log("Gagal sync latar belakang", e));
+            
+            window.showToast(`Izin berhasil ${status_baru}!`, "success");
+            btn.closest('.bg-white').remove();
+            if (typeof window.updateIsiKalender === 'function') window.updateIsiKalender();
         };
 
         window.bukaMasterShift = function() {
             let modal = document.createElement('div'); modal.className = 'fixed inset-0 bg-slate-900/60 z-[90] flex justify-center items-center fade-in backdrop-blur-sm p-4';
+            
+            if(!window.appState.shifts.find(s => s.id === 'SH_LIBUR')) {
+                window.appState.shifts.push({ id: 'SH_LIBUR', name: 'Libur', startTime: '--:--', endTime: '--:--' });
+            }
+
             let shiftList = window.appState.shifts.map(s => `
                 <div class="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-100 mb-2">
-                    <div><h4 class="font-bold text-sm text-slate-800">${s.name}</h4><p class="text-[10px] text-slate-500">ID: ${s.id} | ${s.startTime} - ${s.endTime}</p></div>
+                    <div><h4 class="font-bold text-sm ${s.id === 'SH_LIBUR' ? 'text-rose-600' : 'text-slate-800'}">${s.name}</h4><p class="text-[10px] text-slate-500">ID: ${s.id} | ${s.startTime} - ${s.endTime}</p></div>
                     <div class="flex gap-1">
-                        <button onclick="window.editShift('${s.id}', '${s.name}', '${s.startTime}', '${s.endTime}')" class="p-1.5 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200"><i data-lucide="edit-3" class="w-3.5 h-3.5"></i></button>
-                        <button onclick="window.hapusShift('${s.id}', this)" class="p-1.5 bg-rose-100 text-rose-600 rounded-lg hover:bg-rose-200"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+                        ${s.id !== 'SH_LIBUR' ? `<button onclick="window.editShift('${s.id}', '${s.name}', '${s.startTime}', '${s.endTime}')" class="p-1.5 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200"><i data-lucide="edit-3" class="w-3.5 h-3.5"></i></button>
+                        <button onclick="window.hapusShift('${s.id}', this)" class="p-1.5 bg-rose-100 text-rose-600 rounded-lg hover:bg-rose-200"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>` : `<span class="text-[10px] font-bold text-slate-400 p-2">Permanen</span>`}
                     </div>
                 </div>`).join('');
             modal.innerHTML = `
@@ -1330,20 +935,14 @@
         };
 
         window.editShift = function(id, name, start, end) {
-            document.getElementById('form-shift-title').innerText = "Edit Shift";
-            document.getElementById('shift-id').value = id;
-            document.getElementById('shift-name').value = name;
-            document.getElementById('shift-start').value = start;
-            document.getElementById('shift-end').value = end;
+            document.getElementById('form-shift-title').innerText = "Edit Shift"; document.getElementById('shift-id').value = id;
+            document.getElementById('shift-name').value = name; document.getElementById('shift-start').value = start; document.getElementById('shift-end').value = end;
             document.getElementById('btn-cancel-shift').classList.remove('hidden');
         };
 
         window.batalEditShift = function() {
-            document.getElementById('form-shift-title').innerText = "Tambah Shift Baru";
-            document.getElementById('shift-id').value = "";
-            document.getElementById('shift-name').value = "";
-            document.getElementById('shift-start').value = "";
-            document.getElementById('shift-end').value = "";
+            document.getElementById('form-shift-title').innerText = "Tambah Shift Baru"; document.getElementById('shift-id').value = "";
+            document.getElementById('shift-name').value = ""; document.getElementById('shift-start').value = ""; document.getElementById('shift-end').value = "";
             document.getElementById('btn-cancel-shift').classList.add('hidden');
         };
 
@@ -1352,38 +951,30 @@
             btn.innerHTML = '<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i>';
             try {
                 await fetch(DB_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: "hapus_shift", id_shift: id }) });
-                window.showToast("Shift dihapus!", "success");
-                btn.closest('.flex.justify-between').remove();
-                setTimeout(() => window.syncData(false), 1500);
+                window.showToast("Shift dihapus!", "success"); btn.closest('.flex.justify-between').remove(); setTimeout(() => window.syncData(false), 1500);
             } catch(e) { window.showToast("Gagal menghapus!", "error"); }
         };
 
         window.simpanShiftBaru = async function(btn) {
-            let id = document.getElementById('shift-id').value;
-            let name = document.getElementById('shift-name').value, start = document.getElementById('shift-start').value, end = document.getElementById('shift-end').value;
+            let id = document.getElementById('shift-id').value; let name = document.getElementById('shift-name').value, start = document.getElementById('shift-start').value, end = document.getElementById('shift-end').value;
             if(!name || !start || !end) return window.showToast('Lengkapi data shift!', 'error');
-            
             btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin mx-auto"></i>'; btn.disabled = true;
 
-            let actionType = id ? "edit_shift" : "tambah_shift";
-            let shiftIdToSend = id ? id : ('SH_' + Date.now());
+            let actionType = id ? "edit_shift" : "tambah_shift"; let shiftIdToSend = id ? id : ('SH_' + Date.now());
             let dataToSend = { action: actionType, id_shift: shiftIdToSend, nama: name, start: start, end: end };
-            
             try {
                 await fetch(DB_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(dataToSend) });
-                window.showToast('Shift berhasil disimpan!', 'success');
-                btn.closest('.fixed').remove();
-                await window.syncData(false);
-            } catch (e) {
-                window.showToast("Gagal menyimpan shift!", "error");
-                btn.innerHTML = 'Simpan Shift'; btn.disabled = false;
-            }
+                window.showToast('Shift berhasil disimpan!', 'success'); btn.closest('.fixed').remove(); await window.syncData(false);
+            } catch (e) { window.showToast("Gagal menyimpan shift!", "error"); btn.innerHTML = 'Simpan Shift'; btn.disabled = false; }
         };
 
         window.bukaJadwalKaryawan = function() {
             let modal = document.createElement('div'); modal.className = 'fixed inset-0 bg-slate-900/60 z-[90] flex justify-center items-center fade-in backdrop-blur-sm p-4';
             let empOptions = window.appState.employees.filter(e => e.role !== 'admin').map(e => `<option value="${e.id}">${e.name}</option>`).join('');
+            
+            if(!window.appState.shifts.find(s => s.id === 'SH_LIBUR')) window.appState.shifts.push({ id: 'SH_LIBUR', name: 'Libur', startTime: '--:--', endTime: '--:--' });
             let shiftOptions = window.appState.shifts.map(s => `<option value="${s.id}">[${s.id}] ${s.name}</option>`).join('');
+            
             modal.innerHTML = `
                 <div class="bg-white w-full max-w-sm rounded-[2rem] p-6 shadow-2xl relative slide-up">
                     <button onclick="this.closest('.fixed').remove()" class="absolute top-6 right-6 p-2 bg-slate-100 rounded-full text-slate-400 hover:text-rose-500"><i data-lucide="x" class="w-4 h-4"></i></button>
@@ -1412,40 +1003,17 @@
             let loop = new Date(startDate);
             while(loop <= endDate) {
                 let dateStr = `${loop.getFullYear()}-${String(loop.getMonth() + 1).padStart(2, '0')}-${String(loop.getDate()).padStart(2, '0')}`;
-                
-                window.appState.schedules = window.appState.schedules.filter(s => 
-                    !(String(s.empId).trim().toUpperCase() === String(empId).trim().toUpperCase() && window.formatDateStandard(s.date) === dateStr)
-                );
-                
-                jadwalBaruList.push({ 
-                    id: 'SCH_' + Date.now() + Math.floor(Math.random()*1000), 
-                    empId: empId, 
-                    date: dateStr, 
-                    shiftId: shiftId,
-                    id_user: empId,
-                    tanggal: dateStr,
-                    id_shift: shiftId
-                });
-                
+                window.appState.schedules = window.appState.schedules.filter(s => !(String(s.empId).trim().toUpperCase() === String(empId).trim().toUpperCase() && window.formatDateStandard(s.date) === dateStr));
+                jadwalBaruList.push({ id: 'SCH_' + Date.now() + Math.floor(Math.random()*1000), empId: empId, date: dateStr, shiftId: shiftId, id_user: empId, tanggal: dateStr, id_shift: shiftId });
                 loop.setDate(loop.getDate() + 1);
             }
-            
             window.appState.schedules = [...window.appState.schedules, ...jadwalBaruList];
-            
             let dataToSend = { action: "tambah_jadwal", jadwal_list: jadwalBaruList };
-            
             try {
                 fetch(DB_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(dataToSend) });
-                
-                window.showToast('Jadwal diterapkan!', 'success');
-                btn.closest('.fixed').remove();
-                
+                window.showToast('Jadwal diterapkan!', 'success'); btn.closest('.fixed').remove();
                 if (typeof window.updateIsiKalender === 'function') window.updateIsiKalender();
-            } catch (e) {
-                window.showToast("Gagal menyimpan jadwal!", "error");
-                btn.innerHTML = 'Terapkan Jadwal'; 
-                btn.disabled = false;
-            }
+            } catch (e) { window.showToast("Gagal menyimpan jadwal!", "error"); btn.innerHTML = 'Terapkan Jadwal'; btn.disabled = false; }
         };
 
         window.bukaKalenderJadwal = function() {
@@ -1457,6 +1025,7 @@
                 <div class="bg-white w-full max-w-md rounded-[2rem] p-6 shadow-2xl relative slide-up max-h-[90vh] flex flex-col border border-slate-100">
                     <button onclick="this.closest('.fixed').remove()" class="absolute top-6 right-6 p-2 bg-slate-100 rounded-full text-slate-400 hover:text-rose-500 transition z-10"><i data-lucide="x" class="w-4 h-4"></i></button>
                     <h3 class="font-bold text-lg text-slate-800 mb-1 flex items-center gap-2"><i data-lucide="calendar" class="w-5 h-5 text-purple-600"></i> Kalender Jadwal</h3>
+                    <p class="text-[10px] text-slate-500 mb-2">Pilih karyawan lalu klik salah satu tanggal untuk mengubah shift.</p>
                     <div class="space-y-3 mb-4 mt-2">
                         <select id="kalender-emp" class="w-full border rounded-xl p-3 text-sm bg-slate-50 font-semibold text-slate-700 outline-none focus:border-purple-300" onchange="window.updateIsiKalender()">${empOptions}</select>
                         <div class="flex justify-between items-center bg-slate-50 p-2 rounded-xl border border-slate-100">
@@ -1501,31 +1070,74 @@
                 let loopDate = new Date(year, month, d);
                 let dateStr = `${loopDate.getFullYear()}-${String(loopDate.getMonth() + 1).padStart(2, '0')}-${String(loopDate.getDate()).padStart(2, '0')}`;
                 
-                let mySchedule = window.appState.schedules.find(s => 
-                    String(s.empId).trim().toUpperCase() === empId && 
-                    window.formatDateStandard(s.date) === dateStr
-                );
+                let mySchedule = window.appState.schedules.find(s => String(s.empId).trim().toUpperCase() === empId && window.formatDateStandard(s.date) === dateStr);
+                let leaveData = window.appState.leaves.find(l => String(l.empId).trim().toUpperCase() === empId && window.formatDateStandard(l.date) === dateStr && String(l.status) === 'Disetujui');
                 
-                let shiftContent = '', bgClass = 'bg-slate-50 border-slate-100';
+                let shiftContent = '', bgClass = 'bg-slate-50 border-slate-100 hover:bg-slate-100';
                 
-                if(mySchedule) {
+                if(leaveData) {
+                    if(leaveData.type.toLowerCase().includes('libur') || leaveData.type.toLowerCase().includes('cuti')) {
+                        bgClass = 'bg-rose-50 border-rose-200 shadow-sm';
+                        shiftContent = `<div class="text-[8px] font-bold text-rose-600 leading-tight mt-0.5 truncate w-full px-0.5" title="${leaveData.type}">${leaveData.type}</div>`;
+                    } else {
+                        bgClass = 'bg-emerald-50 border-emerald-200 shadow-sm';
+                        shiftContent = `<div class="text-[8px] font-bold text-emerald-600 leading-tight mt-0.5 truncate w-full px-0.5" title="${leaveData.type}">${leaveData.type}</div>`;
+                    }
+                } else if(mySchedule) {
                     let shiftData = window.appState.shifts.find(sh => String(sh.id).trim().toUpperCase() === String(mySchedule.shiftId).trim().toUpperCase());
                     if(shiftData) { 
-                        bgClass = 'bg-indigo-50 border-indigo-200 shadow-sm'; 
-                        shiftContent = `<div class="text-[8px] font-bold text-indigo-600 leading-tight mt-0.5 truncate w-full px-0.5" title="${shiftData.name}">${shiftData.name}</div><div class="text-[7px] text-indigo-400 leading-tight truncate">${shiftData.startTime}</div>`; 
+                        if(shiftData.id === 'SH_LIBUR') {
+                            bgClass = 'bg-rose-50 border-rose-200 shadow-sm hover:bg-rose-100';
+                            shiftContent = `<div class="text-[8px] font-bold text-rose-600 leading-tight mt-0.5 truncate w-full px-0.5">Libur</div>`;
+                        } else {
+                            bgClass = 'bg-indigo-50 border-indigo-200 shadow-sm hover:bg-indigo-100'; 
+                            shiftContent = `<div class="text-[8px] font-bold text-indigo-600 leading-tight mt-0.5 truncate w-full px-0.5" title="${shiftData.name}">${shiftData.name}</div><div class="text-[7px] text-indigo-400 leading-tight truncate">${shiftData.startTime}</div>`; 
+                        }
                     } else {
-                        bgClass = 'bg-rose-50 border-rose-200'; 
-                        shiftContent = `<div class="text-[7px] font-bold text-rose-500 leading-tight mt-0.5">Shift Terhapus</div>`;
+                        bgClass = 'bg-amber-50 border-amber-200 hover:bg-amber-100'; 
+                        shiftContent = `<div class="text-[7px] font-bold text-amber-500 leading-tight mt-0.5">Shift Terhapus</div>`;
                     }
                 }
-                grid.innerHTML += `<div class="aspect-square flex flex-col items-center justify-start pt-1 border rounded-lg ${bgClass} overflow-hidden"><span class="text-[10px] font-semibold text-slate-700">${d}</span>${shiftContent}</div>`;
+                grid.innerHTML += `<div onclick="window.editJadwalHarian('${empId}', '${dateStr}')" class="aspect-square flex flex-col items-center justify-start pt-1 border rounded-lg ${bgClass} overflow-hidden cursor-pointer transition"><span class="text-[10px] font-semibold text-slate-700">${d}</span>${shiftContent}</div>`;
             }
+        };
+
+        window.editJadwalHarian = function(empId, dateStr) {
+            if(!window.appState.shifts.find(s => s.id === 'SH_LIBUR')) window.appState.shifts.push({ id: 'SH_LIBUR', name: 'Libur', startTime: '--:--', endTime: '--:--' });
+            let shiftOptions = window.appState.shifts.map(s => `<option value="${s.id}">[${s.id}] ${s.name}</option>`).join('');
+            
+            let modal = document.createElement('div'); modal.className = 'fixed inset-0 bg-slate-900/60 z-[100] flex justify-center items-center fade-in backdrop-blur-sm p-4';
+            modal.innerHTML = `
+                <div class="bg-white w-full max-w-sm rounded-[2rem] p-6 shadow-2xl relative slide-up border border-slate-100">
+                    <h3 class="font-bold text-lg text-slate-800 mb-2 flex items-center gap-2"><i data-lucide="edit-calendar" class="w-5 h-5 text-blue-600"></i> Edit Jadwal Tanggal</h3>
+                    <p class="text-sm font-bold text-slate-500 mb-4 bg-slate-100 py-1.5 px-3 rounded-lg inline-block">${dateStr}</p>
+                    <div class="space-y-4 mb-6">
+                        <div><label class="text-xs font-semibold text-slate-500 block mb-1">Ganti Shift Menjadi:</label><select id="edit-harian-shift" class="w-full border rounded-xl p-3 text-sm bg-slate-50 outline-none focus:border-blue-300">${shiftOptions}</select></div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="this.closest('.fixed').remove()" class="flex-1 bg-slate-100 text-slate-600 font-bold py-3.5 rounded-xl hover:bg-slate-200 text-sm transition">Batal</button>
+                        <button onclick="window.simpanEditHarian('${empId}', '${dateStr}', this)" class="flex-1 bg-blue-600 text-white font-bold py-3.5 rounded-xl hover:bg-blue-700 text-sm shadow-lg transition">Simpan</button>
+                    </div>
+                </div>`;
+            document.body.appendChild(modal); lucide.createIcons();
+        };
+
+        window.simpanEditHarian = function(empId, dateStr, btn) {
+            let shiftId = document.getElementById('edit-harian-shift').value;
+            btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin mx-auto"></i>'; btn.disabled = true;
+            
+            window.appState.schedules = window.appState.schedules.filter(s => !(String(s.empId).trim().toUpperCase() === empId && window.formatDateStandard(s.date) === dateStr));
+            let jadwalBaru = { id: 'SCH_' + Date.now(), empId: empId, date: dateStr, shiftId: shiftId, id_user: empId, tanggal: dateStr, id_shift: shiftId };
+            window.appState.schedules.push(jadwalBaru);
+            
+            fetch(DB_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: "tambah_jadwal", jadwal_list: [jadwalBaru] }) }).catch(e=>console.log(e));
+            
+            btn.closest('.fixed').remove(); window.updateIsiKalender(); window.showToast('Jadwal hari tersebut diperbarui!', 'success');
         };
 
         window.bukaManajemenGaji = function() {
             let modal = document.createElement('div'); modal.className = 'fixed inset-0 bg-slate-900/60 z-[90] flex justify-center items-center fade-in backdrop-blur-sm p-4';
             let empOptions = window.appState.employees.filter(e => e.role !== 'admin').map(e => `<option value="${e.id}">${e.name}</option>`).join('');
-            
             let today = new Date(); let cm = String(today.getMonth()+1).padStart(2,'0'); let cy = today.getFullYear();
             
             modal.innerHTML = `
@@ -1533,37 +1145,16 @@
                     <button onclick="this.closest('.fixed').remove()" class="absolute top-6 right-6 p-2 bg-slate-100 rounded-full text-slate-400 hover:text-rose-500"><i data-lucide="x" class="w-4 h-4"></i></button>
                     <h3 class="font-bold text-lg text-slate-800 mb-1 flex items-center gap-2"><i data-lucide="wallet" class="w-5 h-5 text-emerald-600"></i> Penggajian</h3>
                     <p class="text-xs text-slate-500 mb-4">Input Manual & Kalkulasi Slip Gaji</p>
-                    
                     <div class="space-y-4 mb-6">
-                        <div>
-                            <label class="text-xs font-semibold text-slate-500 block mb-1">Bulan Gaji</label>
-                            <input type="month" id="gaji-bulan" class="w-full border rounded-xl p-3 text-sm bg-slate-50" value="${cy}-${cm}" onchange="window.hitungGajiOtomatis()">
-                        </div>
-                        <div>
-                            <label class="text-xs font-semibold text-slate-500 block mb-1">Karyawan</label>
-                            <select id="gaji-emp" class="w-full border rounded-xl p-3 text-sm bg-slate-50" onchange="window.hitungGajiOtomatis()">
-                                <option value="" disabled selected>Pilih Karyawan...</option>
-                                ${empOptions}
-                            </select>
-                        </div>
-                        
+                        <div><label class="text-xs font-semibold text-slate-500 block mb-1">Bulan Gaji</label><input type="month" id="gaji-bulan" class="w-full border rounded-xl p-3 text-sm bg-slate-50" value="${cy}-${cm}" onchange="window.hitungGajiOtomatis()"></div>
+                        <div><label class="text-xs font-semibold text-slate-500 block mb-1">Karyawan</label><select id="gaji-emp" class="w-full border rounded-xl p-3 text-sm bg-slate-50" onchange="window.hitungGajiOtomatis()"><option value="" disabled selected>Pilih Karyawan...</option>${empOptions}</select></div>
                         <div class="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-3">
                             <div><label class="text-[10px] font-bold text-slate-500 block mb-1 uppercase tracking-wider">Gaji Pokok (Rp)</label><input type="number" id="gaji-pokok" class="w-full border rounded-lg p-2 text-sm" value="0" oninput="window.updateTotalGaji()"></div>
-                            <div class="flex gap-2">
-                                <div class="flex-1"><label class="text-[10px] font-bold text-slate-500 block mb-1 uppercase">Hadir (Hari)</label><input type="number" id="gaji-hadir" class="w-full border rounded-lg p-2 text-sm bg-white" oninput="window.updateTotalGaji()"></div>
-                                <div class="flex-1"><label class="text-[10px] font-bold text-slate-500 block mb-1 uppercase">Izin/Sakit (Hari)</label><input type="number" id="gaji-izin" class="w-full border rounded-lg p-2 text-sm bg-white" oninput="window.updateTotalGaji()"></div>
-                            </div>
-                            <div class="flex gap-2">
-                                <div class="flex-1"><label class="text-[10px] font-bold text-slate-500 block mb-1 uppercase">Lembur (Jam)</label><input type="number" id="gaji-lembur" class="w-full border rounded-lg p-2 text-sm bg-white" oninput="window.updateTotalGaji()"></div>
-                                <div class="flex-1"><label class="text-[10px] font-bold text-slate-500 block mb-1 uppercase">Tarif Lembur/Jam</label><input type="number" id="gaji-tarif-lembur" class="w-full border rounded-lg p-2 text-sm" value="20000" oninput="window.updateTotalGaji()"></div>
-                            </div>
+                            <div class="flex gap-2"><div class="flex-1"><label class="text-[10px] font-bold text-slate-500 block mb-1 uppercase">Hadir (Hari)</label><input type="number" id="gaji-hadir" class="w-full border rounded-lg p-2 text-sm bg-white" oninput="window.updateTotalGaji()"></div><div class="flex-1"><label class="text-[10px] font-bold text-slate-500 block mb-1 uppercase">Izin/Sakit (Hari)</label><input type="number" id="gaji-izin" class="w-full border rounded-lg p-2 text-sm bg-white" oninput="window.updateTotalGaji()"></div></div>
+                            <div class="flex gap-2"><div class="flex-1"><label class="text-[10px] font-bold text-slate-500 block mb-1 uppercase">Lembur (Jam)</label><input type="number" id="gaji-lembur" class="w-full border rounded-lg p-2 text-sm bg-white" oninput="window.updateTotalGaji()"></div><div class="flex-1"><label class="text-[10px] font-bold text-slate-500 block mb-1 uppercase">Tarif Lembur/Jam</label><input type="number" id="gaji-tarif-lembur" class="w-full border rounded-lg p-2 text-sm" value="20000" oninput="window.updateTotalGaji()"></div></div>
                             <div><label class="text-[10px] font-bold text-rose-500 block mb-1 uppercase tracking-wider">Potongan Kasbon (Rp)</label><input type="number" id="gaji-kasbon" class="w-full border border-rose-200 rounded-lg p-2 text-sm focus:border-rose-400" value="0" oninput="window.updateTotalGaji()"></div>
                         </div>
-                        
-                        <div class="bg-emerald-50 p-4 rounded-xl border border-emerald-100 text-center">
-                            <p class="text-xs font-bold text-emerald-800 uppercase tracking-widest mb-1">Total Diterima</p>
-                            <p class="text-2xl font-black text-emerald-600">Rp <span id="gaji-total">0</span></p>
-                        </div>
+                        <div class="bg-emerald-50 p-4 rounded-xl border border-emerald-100 text-center"><p class="text-xs font-bold text-emerald-800 uppercase tracking-widest mb-1">Total Diterima</p><p class="text-2xl font-black text-emerald-600">Rp <span id="gaji-total">0</span></p></div>
                     </div>
                     <button onclick="window.cetakSlipGaji()" class="w-full bg-emerald-500 text-white font-bold py-3.5 rounded-xl hover:bg-emerald-600 shadow-lg shadow-emerald-200 text-sm flex items-center justify-center gap-2"><i data-lucide="printer" class="w-4 h-4"></i> Cetak Slip Gaji</button>
                 </div>`;
@@ -1582,40 +1173,25 @@
             atts.forEach(att => {
                 let cleanDate = window.formatDateStandard(att.date);
                 let sched = window.appState.schedules.find(s => String(s.empId).trim().toUpperCase() === String(empId).trim().toUpperCase() && window.formatDateStandard(s.date) === cleanDate);
-                let sStart = null, sEnd = null;
-                let isValidShift = false;
-                
+                let sStart = null, sEnd = null, isValidShift = false;
                 if(sched) {
                     let sh = window.appState.shifts.find(s => String(s.id).trim().toUpperCase() === String(sched.shiftId).trim().toUpperCase());
                     if(sh) { sStart = String(sh.startTime).trim(); sEnd = String(sh.endTime).trim(); isValidShift = true; }
                 }
-                
-                if (isValidShift) {
-                    totalLemburMins += window.hitungLembur(att.clockIn, att.clockOut, sStart, sEnd);
-                }
+                if (isValidShift) totalLemburMins += window.hitungLembur(att.clockIn, att.clockOut, sStart, sEnd);
             });
             let jamLembur = Math.floor(totalLemburMins / 60);
 
             let izin = window.appState.leaves.filter(l => String(l.empId).trim().toUpperCase() === String(empId).trim().toUpperCase() && String(l.date).trim().startsWith(bulanTahun) && String(l.status).trim() === 'Disetujui').length;
 
-            document.getElementById('gaji-hadir').value = totalHadir;
-            document.getElementById('gaji-izin').value = izin;
-            document.getElementById('gaji-lembur').value = jamLembur;
-            
-            if (parseInt(document.getElementById('gaji-pokok').value) === 0) {
-                document.getElementById('gaji-pokok').value = "3000000"; 
-            }
+            document.getElementById('gaji-hadir').value = totalHadir; document.getElementById('gaji-izin').value = izin; document.getElementById('gaji-lembur').value = jamLembur;
+            if (parseInt(document.getElementById('gaji-pokok').value) === 0) document.getElementById('gaji-pokok').value = "3000000"; 
             window.updateTotalGaji();
         };
 
         window.updateTotalGaji = function() {
-            let pokok = parseInt(document.getElementById('gaji-pokok').value) || 0;
-            let lemburJam = parseInt(document.getElementById('gaji-lembur').value) || 0;
-            let tarifLembur = parseInt(document.getElementById('gaji-tarif-lembur').value) || 0;
-            let kasbon = parseInt(document.getElementById('gaji-kasbon').value) || 0;
-            
-            let total = pokok + (lemburJam * tarifLembur) - kasbon;
-            document.getElementById('gaji-total').innerText = total.toLocaleString('id-ID');
+            let pokok = parseInt(document.getElementById('gaji-pokok').value) || 0; let lemburJam = parseInt(document.getElementById('gaji-lembur').value) || 0; let tarifLembur = parseInt(document.getElementById('gaji-tarif-lembur').value) || 0; let kasbon = parseInt(document.getElementById('gaji-kasbon').value) || 0;
+            let total = pokok + (lemburJam * tarifLembur) - kasbon; document.getElementById('gaji-total').innerText = total.toLocaleString('id-ID');
         };
 
         window.cetakSlipGaji = function() {
@@ -1624,82 +1200,43 @@
             
             let emp = window.appState.employees.find(e => String(e.id).trim().toUpperCase() === String(empId).trim().toUpperCase());
             let bulan = document.getElementById('gaji-bulan').value;
-            let pokok = parseInt(document.getElementById('gaji-pokok').value) || 0;
-            let hadir = document.getElementById('gaji-hadir').value;
-            let izin = document.getElementById('gaji-izin').value;
-            let lembur = document.getElementById('gaji-lembur').value;
-            let uLembur = (parseInt(lembur) * (parseInt(document.getElementById('gaji-tarif-lembur').value)||0));
-            let kasbon = parseInt(document.getElementById('gaji-kasbon').value) || 0;
+            let pokok = parseInt(document.getElementById('gaji-pokok').value) || 0; let hadir = document.getElementById('gaji-hadir').value; let izin = document.getElementById('gaji-izin').value;
+            let lembur = document.getElementById('gaji-lembur').value; let uLembur = (parseInt(lembur) * (parseInt(document.getElementById('gaji-tarif-lembur').value)||0)); let kasbon = parseInt(document.getElementById('gaji-kasbon').value) || 0;
             let total = document.getElementById('gaji-total').innerText;
 
-            let printArea = document.createElement('div');
-            printArea.id = 'slip-gaji-print-area';
-            printArea.className = 'bg-white p-8 font-mono text-sm max-w-2xl mx-auto';
+            let printArea = document.createElement('div'); printArea.id = 'slip-gaji-print-area'; printArea.className = 'bg-white p-8 font-mono text-sm max-w-2xl mx-auto';
             printArea.innerHTML = `
-                <div class="text-center mb-6 border-b-2 border-slate-800 pb-4">
-                    <h1 class="text-2xl font-bold uppercase tracking-widest">${window.appState.settings.companyName}</h1>
-                    <p>SLIP GAJI KARYAWAN</p>
-                    <p>Periode: ${bulan}</p>
-                </div>
-                <div class="mb-6 grid grid-cols-2 gap-4">
-                    <div><p><strong>Nama:</strong> ${emp.name}</p><p><strong>Jabatan:</strong> ${emp.position}</p></div>
-                    <div class="text-right"><p><strong>Hadir:</strong> ${hadir} Hari</p><p><strong>Izin/Sakit:</strong> ${izin} Hari</p></div>
-                </div>
-                <table class="w-full mb-6 border-collapse">
-                    <tr class="border-b border-slate-300"><th class="text-left py-2">Keterangan</th><th class="text-right py-2">Jumlah</th></tr>
-                    <tr><td class="py-2">Gaji Pokok</td><td class="text-right py-2">Rp ${pokok.toLocaleString('id-ID')}</td></tr>
-                    <tr><td class="py-2">Uang Lembur (${lembur} jam)</td><td class="text-right py-2">Rp ${uLembur.toLocaleString('id-ID')}</td></tr>
-                    <tr><td class="py-2 text-rose-600">Potongan Kasbon</td><td class="text-right py-2 text-rose-600">- Rp ${kasbon.toLocaleString('id-ID')}</td></tr>
-                    <tr class="border-t-2 border-slate-800 font-bold text-lg"><td class="py-3">TOTAL DITERIMA</td><td class="text-right py-3">Rp ${total}</td></tr>
-                </table>
-                <div class="mt-12 flex justify-between text-center">
-                    <div><p class="mb-16">Penerima,</p><p class="underline font-bold">${emp.name}</p></div>
-                    <div><p class="mb-16">Manager HRD,</p><p class="underline font-bold">${window.appState.currentUser.name}</p></div>
-                </div>
-            `;
-            document.body.appendChild(printArea);
-            window.print();
-            setTimeout(() => printArea.remove(), 1000);
+                <div class="text-center mb-6 border-b-2 border-slate-800 pb-4"><h1 class="text-2xl font-bold uppercase tracking-widest">${window.appState.settings.companyName}</h1><p>SLIP GAJI KARYAWAN</p><p>Periode: ${bulan}</p></div>
+                <div class="mb-6 grid grid-cols-2 gap-4"><div><p><strong>Nama:</strong> ${emp.name}</p><p><strong>Jabatan:</strong> ${emp.position}</p></div><div class="text-right"><p><strong>Hadir:</strong> ${hadir} Hari</p><p><strong>Izin/Sakit/Libur:</strong> ${izin} Hari</p></div></div>
+                <table class="w-full mb-6 border-collapse"><tr class="border-b border-slate-300"><th class="text-left py-2">Keterangan</th><th class="text-right py-2">Jumlah</th></tr>
+                <tr><td class="py-2">Gaji Pokok</td><td class="text-right py-2">Rp ${pokok.toLocaleString('id-ID')}</td></tr>
+                <tr><td class="py-2">Uang Lembur (${lembur} jam)</td><td class="text-right py-2">Rp ${uLembur.toLocaleString('id-ID')}</td></tr>
+                <tr><td class="py-2 text-rose-600">Potongan Kasbon</td><td class="text-right py-2 text-rose-600">- Rp ${kasbon.toLocaleString('id-ID')}</td></tr>
+                <tr class="border-t-2 border-slate-800 font-bold text-lg"><td class="py-3">TOTAL DITERIMA</td><td class="text-right py-3">Rp ${total}</td></tr></table>
+                <div class="mt-12 flex justify-between text-center"><div><p class="mb-16">Penerima,</p><p class="underline font-bold">${emp.name}</p></div><div><p class="mb-16">Manager HRD,</p><p class="underline font-bold">${window.appState.currentUser.name}</p></div></div>`;
+            document.body.appendChild(printArea); window.print(); setTimeout(() => printArea.remove(), 1000);
         };
 
         window.renderAkun = function(container) {
             const user = window.appState.currentUser;
-            
-            // Menggunakan penarik gambar khusus
             let userPhotoUrlAkun = window.getSafeImageUrl(user.profilePhoto);
-
-            let avatarAkun = (userPhotoUrlAkun && userPhotoUrlAkun !== '')
-                ? `<img src="${userPhotoUrlAkun}" class="w-20 h-20 md:w-28 md:h-28 rounded-full object-cover mx-auto mb-3 shadow-inner border-4 border-white">`
-                : `<div class="w-20 h-20 md:w-28 md:h-28 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-bold text-3xl md:text-4xl mx-auto mb-3 shadow-inner border-4 border-white">${user.name.charAt(0)}</div>`;
+            let avatarAkun = (userPhotoUrlAkun && userPhotoUrlAkun !== '') ? `<img src="${userPhotoUrlAkun}" class="w-20 h-20 md:w-28 md:h-28 rounded-full object-cover mx-auto mb-3 shadow-inner border-4 border-white">` : `<div class="w-20 h-20 md:w-28 md:h-28 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-bold text-3xl md:text-4xl mx-auto mb-3 shadow-inner border-4 border-white">${user.name.charAt(0)}</div>`;
 
             container.innerHTML = `
-                <div class="bg-blue-600 pt-8 pb-16 px-5 md:px-10 rounded-b-[2rem] md:rounded-b-[3rem] shadow-md relative z-0">
-                    <h2 class="text-white font-bold text-xl md:text-2xl tracking-wide">Profil Akun</h2>
-                </div>
+                <div class="bg-blue-600 pt-8 pb-16 px-5 md:px-10 rounded-b-[2rem] md:rounded-b-[3rem] shadow-md relative z-0"><h2 class="text-white font-bold text-xl md:text-2xl tracking-wide">Profil Akun</h2></div>
                 <div class="px-5 md:px-10 -mt-10 relative z-10 fade-in pb-24">
                     <div class="md:grid md:grid-cols-3 md:gap-8">
-                        <div class="md:col-span-1 bg-white rounded-2xl p-6 shadow-md text-center border border-slate-100 mb-6 md:mb-0 h-fit">
-                            ${avatarAkun}
-                            <h3 class="font-bold text-slate-800 text-xl md:text-2xl">${user.name}</h3>
-                            <p class="text-sm md:text-base text-slate-500 font-medium">${user.position}</p>
-                            <span class="inline-block mt-2 px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-xs font-bold uppercase tracking-wider">${user.role}</span>
-                        </div>
+                        <div class="md:col-span-1 bg-white rounded-2xl p-6 shadow-md text-center border border-slate-100 mb-6 md:mb-0 h-fit">${avatarAkun}<h3 class="font-bold text-slate-800 text-xl md:text-2xl">${user.name}</h3><p class="text-sm md:text-base text-slate-500 font-medium">${user.position}</p><span class="inline-block mt-2 px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-xs font-bold uppercase tracking-wider">${user.role}</span></div>
                         <div class="md:col-span-2 space-y-3">
-                            <button onclick="window.bukaEditProfil()" class="w-full bg-white p-4 md:p-5 rounded-xl shadow-sm border border-slate-100 flex items-center gap-3 hover:bg-slate-50 transition text-slate-700">
-                                <i data-lucide="user-cog" class="w-5 h-5 md:w-6 md:h-6 text-blue-500"></i><span class="font-bold text-sm md:text-base flex-1 text-left">Edit Profil & Kata Sandi</span><i data-lucide="chevron-right" class="w-4 h-4 text-slate-300"></i>
-                            </button>
-                            <button onclick="window.logoutApp()" class="w-full bg-rose-50 p-4 md:p-5 rounded-xl shadow-sm border border-rose-100 flex items-center gap-3 hover:bg-rose-100 transition text-rose-600">
-                                <i data-lucide="log-out" class="w-5 h-5 md:w-6 md:h-6"></i><span class="font-bold text-sm md:text-base">Keluar (Log Out)</span>
-                            </button>
+                            <button onclick="window.bukaEditProfil()" class="w-full bg-white p-4 md:p-5 rounded-xl shadow-sm border border-slate-100 flex items-center gap-3 hover:bg-slate-50 transition text-slate-700"><i data-lucide="user-cog" class="w-5 h-5 md:w-6 md:h-6 text-blue-500"></i><span class="font-bold text-sm md:text-base flex-1 text-left">Edit Profil & Kata Sandi</span><i data-lucide="chevron-right" class="w-4 h-4 text-slate-300"></i></button>
+                            <button onclick="window.logoutApp()" class="w-full bg-rose-50 p-4 md:p-5 rounded-xl shadow-sm border border-rose-100 flex items-center gap-3 hover:bg-rose-100 transition text-rose-600"><i data-lucide="log-out" class="w-5 h-5 md:w-6 md:h-6"></i><span class="font-bold text-sm md:text-base">Keluar (Log Out)</span></button>
                         </div>
                     </div>
-                </div>
-            `;
+                </div>`;
         };
 
         window.bukaEditProfil = function() {
-            let user = window.appState.currentUser;
-            let isAdmin = user.role === 'admin';
+            let user = window.appState.currentUser; let isAdmin = user.role === 'admin';
             let modal = document.createElement('div'); modal.className = 'fixed inset-0 bg-slate-900/60 z-[90] flex justify-center items-center fade-in backdrop-blur-sm p-4';
             modal.innerHTML = `
                 <div class="bg-white w-full max-w-sm rounded-[2rem] p-6 shadow-2xl relative slide-up border border-slate-100">
@@ -1722,7 +1259,6 @@
             let newCompanyName = companyNameInput ? companyNameInput.value.trim() : window.appState.settings.companyName;
             
             let user = window.appState.currentUser;
-            
             if(!newName) return window.showToast('Nama tidak boleh kosong!', 'error');
             if(user.role === 'admin' && !newCompanyName) return window.showToast('Nama Aplikasi tidak boleh kosong!', 'error');
             
@@ -1732,9 +1268,12 @@
             let dataToSend = { action: "update_profil", id_user: user.id, nama: newName, password: payloadPass, company_name: newCompanyName };
 
             try {
-                await fetch(DB_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(dataToSend) });
+                await fetch(DB_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(dataToSend) });
                 user.name = newName; user.password = payloadPass; 
-                if(user.role === 'admin') window.appState.settings.companyName = newCompanyName;
+                if(user.role === 'admin') {
+                    window.appState.settings.companyName = newCompanyName;
+                    localStorage.setItem('absensique_admin_name', newName); 
+                }
                 window.renderApp(); btn.closest('.fixed').remove(); 
                 window.showToast('Profil & Pengaturan diperbarui!', 'success');
             } catch(e) { window.showToast("Gagal menyimpan profil!", "error"); btn.innerHTML = 'Simpan'; btn.disabled = false; }
@@ -1753,10 +1292,7 @@
                 const isActive = currentTab === m.id;
                 nav.innerHTML += `
                     <button onclick="window.navigate('${m.id}')" class="flex flex-col items-center gap-1 min-w-[60px] transition-all duration-300 ${isActive ? m.activeText + ' transform -translate-y-1' : 'text-slate-400 hover:text-slate-600'}">
-                        <div class="relative p-2 ${isActive ? m.activeBg + ' text-white rounded-xl shadow-lg' : 'p-1.5'} transition-all">
-                            <i data-lucide="${m.icon}" class="w-5 h-5 md:w-6 md:h-6 ${isActive ? 'stroke-[2.5px]' : 'stroke-2'}"></i>
-                        </div>
-                        <span class="text-[10px] font-bold tracking-wide">${m.label}</span>
+                        <div class="relative p-2 ${isActive ? m.activeBg + ' text-white rounded-xl shadow-lg' : 'p-1.5'} transition-all"><i data-lucide="${m.icon}" class="w-5 h-5 md:w-6 md:h-6 ${isActive ? 'stroke-[2.5px]' : 'stroke-2'}"></i></div><span class="text-[10px] font-bold tracking-wide">${m.label}</span>
                     </button>`;
             });
             container.appendChild(nav);
