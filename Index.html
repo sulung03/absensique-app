@@ -213,7 +213,7 @@
                 if (db.leaves !== undefined) {
                     window.appState.leaves = (Array.isArray(db.leaves) ? db.leaves : []).map(raw => {
                         let l = lowerKeys(raw);
-                        return { ...l, date: window.formatDateStandard(l.date || l.tanggal || ''), empId: String(l.empid || l.id_user || l.iduser || '').trim().toUpperCase(), type: l.type || l.jenis || l.jenis_izin || l.jenisizin || '', reason: l.reason || l.keterangan || l.alasan || '', status: l.status || 'Pending' };
+                        return { ...l, id: String(l.id || '').trim(), date: window.formatDateStandard(l.date || l.tanggal || ''), empId: String(l.empid || l.id_user || l.iduser || '').trim().toUpperCase(), type: l.type || l.jenis || l.jenis_izin || l.jenisizin || '', reason: l.reason || l.keterangan || l.alasan || '', status: l.status || 'Pending' };
                     });
                 }
                 
@@ -269,6 +269,7 @@
             appDiv.appendChild(contentDiv);
 
             if(currentTab === 'dashboard') window.renderDashboard(contentDiv);
+            else if(currentTab === 'jadwal') window.renderJadwal(contentDiv);
             else if(currentTab === 'rekap') window.renderRekap(contentDiv);
             else if(currentTab === 'karyawan') window.renderKaryawan(contentDiv);
             else if(currentTab === 'akun') window.renderAkun(contentDiv);
@@ -349,10 +350,7 @@
                         let cleanDate = window.formatDateStandard(att.date);
                         let sched = window.appState.schedules.find(s => String(s.empId).trim().toUpperCase() === String(user.id).trim().toUpperCase() && window.formatDateStandard(s.date) === cleanDate);
                         let sStart = null, sEnd = null, isValidShift = false;
-                        if(sched) {
-                            let sh = window.appState.shifts.find(s => String(s.id).trim().toUpperCase() === String(sched.shiftId).trim().toUpperCase());
-                            if(sh) { sStart = String(sh.startTime).trim(); sEnd = String(sh.endTime).trim(); isValidShift = true; }
-                        }
+                        if(sched) { let sh = window.appState.shifts.find(s => String(s.id).trim().toUpperCase() === String(sched.shiftId).trim().toUpperCase()); if(sh) { sStart = String(sh.startTime).trim(); sEnd = String(sh.endTime).trim(); isValidShift = true; } }
                         if (isValidShift) totalLemburMenit += window.hitungLembur(att.clockIn, att.clockOut, sStart, sEnd);
                     }
                 });
@@ -481,6 +479,78 @@
                 </div>`;
         };
 
+        window.renderJadwal = function(container) {
+            const user = window.appState.currentUser;
+            let today = new Date();
+            let currentMonth = today.getMonth();
+            let currentYear = today.getFullYear();
+            let monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+            
+            let html = `
+                <div class="bg-blue-600 pt-8 pb-16 px-5 md:px-10 rounded-b-[2rem] md:rounded-b-[3rem] shadow-md relative z-0 flex justify-between items-center">
+                    <h2 class="text-white font-bold text-xl md:text-2xl tracking-wide">Jadwal Bulanan</h2>
+                </div>
+                <div class="px-5 md:px-10 -mt-10 relative z-10 fade-in pb-24">
+                    <div class="bg-white w-full rounded-[2rem] p-4 md:p-6 shadow-md border border-slate-100 flex flex-col">
+                        <div class="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100 mb-4">
+                            <span class="font-bold text-sm md:text-base text-slate-700">${monthNames[currentMonth]} ${currentYear}</span>
+                        </div>
+                        <div class="grid grid-cols-7 gap-1 md:gap-2 text-center mb-2">
+                            <div class="text-[10px] md:text-xs font-bold text-rose-500">Min</div>
+                            <div class="text-[10px] md:text-xs font-bold text-slate-500">Sen</div>
+                            <div class="text-[10px] md:text-xs font-bold text-slate-500">Sel</div>
+                            <div class="text-[10px] md:text-xs font-bold text-slate-500">Rab</div>
+                            <div class="text-[10px] md:text-xs font-bold text-slate-500">Kam</div>
+                            <div class="text-[10px] md:text-xs font-bold text-slate-500">Jum</div>
+                            <div class="text-[10px] md:text-xs font-bold text-slate-500">Sab</div>
+                        </div>
+                        <div class="grid grid-cols-7 gap-1 md:gap-2">`;
+            
+            let firstDay = new Date(currentYear, currentMonth, 1).getDay();
+            let daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+            
+            for(let i=0; i<firstDay; i++) {
+                html += `<div class="aspect-square p-1"></div>`;
+            }
+            
+            for(let d=1; d<=daysInMonth; d++) {
+                let dateStr = window.formatDateStandard(new Date(currentYear, currentMonth, d));
+                let mySchedule = window.appState.schedules.find(s => String(s.empId).trim().toUpperCase() === String(user.id).trim().toUpperCase() && window.formatDateStandard(s.date) === dateStr);
+                let leaveData = window.appState.leaves.find(l => String(l.empId).trim().toUpperCase() === String(user.id).trim().toUpperCase() && window.formatDateStandard(l.date) === dateStr && String(l.status) === 'Disetujui');
+                
+                let shiftContent = '', bgClass = 'bg-slate-50 border-slate-100';
+                
+                if(leaveData) {
+                    if(leaveData.type.toLowerCase().includes('libur') || leaveData.type.toLowerCase().includes('cuti')) {
+                        bgClass = 'bg-rose-50 border-rose-200 shadow-sm';
+                        shiftContent = `<div class="text-[8px] md:text-[10px] font-bold text-rose-600 leading-tight mt-0.5 truncate w-full px-0.5" title="${leaveData.type}">${leaveData.type}</div>`;
+                    } else {
+                        bgClass = 'bg-emerald-50 border-emerald-200 shadow-sm';
+                        shiftContent = `<div class="text-[8px] md:text-[10px] font-bold text-emerald-600 leading-tight mt-0.5 truncate w-full px-0.5" title="${leaveData.type}">${leaveData.type}</div>`;
+                    }
+                } else if(mySchedule) {
+                    let shiftData = window.appState.shifts.find(sh => String(sh.id).trim().toUpperCase() === String(mySchedule.shiftId).trim().toUpperCase());
+                    if(shiftData) { 
+                        if(shiftData.id === 'SH_LIBUR') {
+                            bgClass = 'bg-rose-50 border-rose-200 shadow-sm';
+                            shiftContent = `<div class="text-[8px] md:text-[10px] font-bold text-rose-600 leading-tight mt-0.5 truncate w-full px-0.5">Libur</div>`;
+                        } else {
+                            bgClass = 'bg-indigo-50 border-indigo-200 shadow-sm'; 
+                            shiftContent = `<div class="text-[8px] md:text-[10px] font-bold text-indigo-600 leading-tight mt-0.5 truncate w-full px-0.5" title="${shiftData.name}">${shiftData.name}</div><div class="text-[7px] md:text-[9px] text-indigo-400 leading-tight truncate">${shiftData.startTime}</div>`; 
+                        }
+                    } else {
+                        bgClass = 'bg-amber-50 border-amber-200'; 
+                        shiftContent = `<div class="text-[7px] md:text-[9px] font-bold text-amber-500 leading-tight mt-0.5">Shift Terhapus</div>`;
+                    }
+                }
+                
+                html += `<div class="aspect-square flex flex-col items-center justify-start pt-1 border rounded-lg ${bgClass} overflow-hidden transition"><span class="text-[10px] md:text-sm font-semibold text-slate-700">${d}</span>${shiftContent}</div>`;
+            }
+            
+            html += `</div></div></div>`;
+            container.innerHTML = html;
+        };
+
         window.bukaKameraAbsen = function(type) {
             const user = window.appState.currentUser;
             const now = new Date();
@@ -516,13 +586,12 @@
                         <div class="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
                             <div id="scan-frame" class="w-64 h-64 border-2 border-dashed border-rose-400 rounded-2xl relative transition-all duration-300 overflow-hidden flex flex-col justify-end">
                                 <div class="absolute top-0 left-0 w-full h-1 bg-white opacity-60 shadow-[0_0_15px_currentColor] animate-[scan_2s_ease-in-out_infinite]"></div>
-                                <div class="w-full h-2 bg-slate-800/80 backdrop-blur relative z-20"><div id="scan-progress" class="h-full bg-emerald-400 transition-all duration-100 ease-linear w-0"></div></div>
                             </div>
                         </div>
                         <canvas id="kamera-canvas" class="hidden"></canvas>
                     </div>
                     <div class="p-6 pb-10 bg-black absolute bottom-0 w-full flex flex-col items-center gap-4 z-20">
-                        <p id="kamera-status" class="text-rose-400 text-sm font-medium animate-pulse"><i data-lucide="scan-face" class="w-4 h-4 inline mb-1"></i> Arahkan Wajah ke Kamera...</p>
+                        <p id="kamera-status" class="text-rose-400 text-sm font-medium animate-pulse"><i data-lucide="scan-face" class="w-4 h-4 inline mb-1"></i> Arahkan Wajah ke Tengah & Jangan Goyang...</p>
                         <button id="btn-capture" onclick="window.ambilFotoAbsen('${type}', '${accentColor}')" class="w-20 h-20 bg-white/50 rounded-full border-4 border-slate-500 flex items-center justify-center transition cursor-not-allowed" disabled><div class="w-16 h-16 border-2 border-slate-400 rounded-full"></div></button>
                     </div>
                 </div>`;
@@ -558,7 +627,6 @@
             tracker.setInitialScale(4); tracker.setStepSize(2); tracker.setEdgesDensity(0.1);
 
             window.trackerTask = tracking.track('#kamera-video', tracker);
-            window.faceHoldStartTime = 0;
             window.lastFaceRect = null;
 
             tracker.on('track', function(event) {
@@ -571,7 +639,6 @@
                 let btn = document.getElementById('btn-capture');
                 let status = document.getElementById('kamera-status');
                 let frame = document.getElementById('scan-frame');
-                let progressLine = document.getElementById('scan-progress');
 
                 if (event.data.length > 0) {
                     let rect = event.data.reduce((prev, current) => (prev.width > current.width) ? prev : current);
@@ -590,34 +657,22 @@
                     if (inFrame && stable) {
                         context.strokeStyle = '#10b981'; context.lineWidth = 3;
                         context.strokeRect(rect.x, rect.y, rect.width, rect.height);
-
-                        if (window.faceHoldStartTime === 0) window.faceHoldStartTime = Date.now();
-                        let elapsed = Date.now() - window.faceHoldStartTime;
-                        let percent = Math.min(100, (elapsed / 3000) * 100);
-                        if (progressLine) progressLine.style.width = percent + '%';
-
-                        if (elapsed >= 3000) {
-                            status.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4 inline mb-1"></i> Sempurna! Silakan Tekan Tombol.`; status.className = "text-emerald-400 text-sm font-bold";
-                            btn.disabled = false; btn.className = "w-20 h-20 bg-white rounded-full border-4 border-emerald-300 flex items-center justify-center active:scale-90 transition shadow-[0_0_20px_rgba(16,185,129,0.5)] cursor-pointer";
-                            frame.className = "w-64 h-64 border-2 border-solid border-emerald-400 rounded-2xl relative shadow-[inset_0_0_20px_rgba(16,185,129,0.4)] overflow-hidden flex flex-col justify-end";
-                            if(window.lucide) lucide.createIcons();
-                        } else {
-                            let timeLeft = Math.ceil((3000 - elapsed) / 1000);
-                            status.innerHTML = `<i data-lucide="scan-face" class="w-4 h-4 inline mb-1"></i> Tahan wajah... ${timeLeft}s`; status.className = "text-amber-400 text-sm font-bold";
-                            btn.disabled = true; btn.className = "w-20 h-20 bg-white/50 rounded-full border-4 border-slate-500 flex items-center justify-center transition cursor-not-allowed";
-                            frame.className = "w-64 h-64 border-2 border-dashed border-amber-400 rounded-2xl relative shadow-[inset_0_0_20px_rgba(251,191,36,0.3)] overflow-hidden flex flex-col justify-end";
-                        }
+                        
+                        status.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4 inline mb-1"></i> Sempurna! Silakan Tekan Tombol`;
+                        status.className = "text-emerald-400 text-sm font-bold";
+                        btn.disabled = false; btn.className = "w-20 h-20 bg-white rounded-full border-4 border-emerald-300 flex items-center justify-center active:scale-90 transition shadow-[0_0_20px_rgba(16,185,129,0.5)] cursor-pointer";
+                        frame.className = "w-64 h-64 border-2 border-solid border-emerald-400 rounded-2xl relative shadow-[inset_0_0_20px_rgba(16,185,129,0.4)] overflow-hidden flex flex-col justify-end";
+                        
                     } else { resetDetectionState(context, rect); }
                 } else { resetDetectionState(context, null); }
             });
 
             function resetDetectionState(ctx, rect) {
-                window.faceHoldStartTime = 0; window.lastFaceRect = null;
-                let btn = document.getElementById('btn-capture'), status = document.getElementById('kamera-status'), frame = document.getElementById('scan-frame'), progressLine = document.getElementById('scan-progress');
-                if (progressLine) progressLine.style.width = '0%';
+                window.lastFaceRect = null;
+                let btn = document.getElementById('btn-capture'), status = document.getElementById('kamera-status'), frame = document.getElementById('scan-frame');
                 if (rect) {
                     ctx.strokeStyle = '#f43f5e'; ctx.lineWidth = 2; ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
-                    status.innerHTML = `<i data-lucide="alert-circle" class="w-4 h-4 inline mb-1"></i> Jangan Goyang & Posisikan di Tengah!`; status.className = "text-rose-400 text-sm font-bold animate-pulse";
+                    status.innerHTML = `<i data-lucide="alert-circle" class="w-4 h-4 inline mb-1"></i> Posisikan di Tengah & Jangan Goyang!`; status.className = "text-rose-400 text-sm font-bold";
                 } else {
                     status.innerHTML = `<i data-lucide="scan-face" class="w-4 h-4 inline mb-1"></i> Wajah Tidak Ditemukan`; status.className = "text-rose-400 text-sm font-medium animate-pulse";
                 }
@@ -764,16 +819,29 @@
             if (user.role !== 'admin') { container.innerHTML = `<div class="h-full flex flex-col items-center justify-center p-8 text-center fade-in"><div class="w-24 h-24 bg-rose-100 text-rose-500 rounded-full flex items-center justify-center mb-6 border-4 border-white shadow-lg"><i data-lucide="shield-alert" class="w-12 h-12"></i></div><h2 class="text-xl font-bold text-slate-800 mb-2">Akses Ditolak</h2><p class="text-sm text-slate-500">Hanya HRD/Admin yang dapat mengakses ini.</p></div>`; return; }
             let emps = window.appState.employees.filter(e => !e.isDeleted);
             let html = `<div class="bg-blue-600 pt-8 pb-16 px-5 md:px-10 rounded-b-[2rem] md:rounded-b-[3rem] shadow-md relative z-0 flex justify-between items-center"><h2 class="text-white font-bold text-xl md:text-2xl tracking-wide">Karyawan</h2><button onclick="window.tambahKaryawan()" class="bg-white/20 hover:bg-white/30 text-white p-2 rounded-xl backdrop-blur-sm transition active:scale-95 flex items-center gap-2"><i data-lucide="user-plus" class="w-6 h-6"></i> <span class="hidden md:inline font-bold text-sm">Tambah</span></button></div><div class="px-5 md:px-10 -mt-10 relative z-10 fade-in pb-24"><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">`;
+            
             emps.forEach(e => {
                 let safeName = e.name || e.nama_lengkap || e.nama || 'Tanpa Nama';
                 let safePos = e.position || e.jabatan || 'Staff';
                 let safeUser = e.username || e.user || '-';
                 let safePin = e.password || e.pin || '';
-                let empPhotoUrl = window.getSafeImageUrl(e.profilePhoto);
                 
-                let avatarEmp = (empPhotoUrl && empPhotoUrl !== '') ? `<img src="${empPhotoUrl}" class="w-12 h-12 rounded-full object-cover flex-shrink-0 shadow-sm border border-slate-200">` : `<div class="w-12 h-12 ${e.role === 'admin' ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'} rounded-full flex items-center justify-center font-bold text-xl flex-shrink-0">${safeName.charAt(0)}</div>`;
+                let empPhotoUrl = window.getSafeImageUrl(e.profilePhoto);
+                let avatarEmp = (empPhotoUrl && empPhotoUrl !== '')
+                    ? `<img src="${empPhotoUrl}" class="w-12 h-12 rounded-full object-cover flex-shrink-0 shadow-sm border border-slate-200">`
+                    : `<div class="w-12 h-12 ${e.role === 'admin' ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'} rounded-full flex items-center justify-center font-bold text-xl flex-shrink-0">${safeName.charAt(0)}</div>`;
 
-                html += `<div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 flex items-center gap-4 hover:shadow-md transition">${avatarEmp}<div class="flex-1"><h4 class="font-bold text-slate-800 text-sm md:text-base flex items-center gap-2">${safeName} ${e.role === 'admin' ? '<i data-lucide="crown" class="w-3 h-3 md:w-4 md:h-4 text-amber-500"></i>' : ''}</h4><p class="text-xs text-slate-500 font-medium">${safePos} • <span class="font-mono bg-slate-100 px-1 rounded">${safeUser}</span></p></div><div class="flex flex-col gap-1"><button onclick="window.editKaryawan('${e.id}', '${safeName}', '${safeUser}', '${safePos}', '${safePin}', '${e.profilePhoto || ''}')" class="p-2 bg-slate-50 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"><i data-lucide="edit" class="w-4 h-4"></i></button><button onclick="window.hapusKaryawan('${e.id}', this)" class="p-2 bg-slate-50 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></div>`;
+                html += `
+                    <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 hover:shadow-md transition flex flex-col">
+                        <div class="flex items-center gap-4">
+                            ${avatarEmp}
+                            <div class="flex-1"><h4 class="font-bold text-slate-800 text-sm md:text-base flex items-center gap-2">${safeName} ${e.role === 'admin' ? '<i data-lucide="crown" class="w-3 h-3 md:w-4 md:h-4 text-amber-500"></i>' : ''}</h4><p class="text-xs text-slate-500 font-medium">${safePos} • <span class="font-mono bg-slate-100 px-1 rounded">${safeUser}</span></p></div>
+                            <div class="flex flex-col gap-1">
+                                <button onclick="window.editKaryawan('${e.id}', '${safeName}', '${safeUser}', '${safePos}', '${safePin}', '${e.profilePhoto || ''}')" class="p-2 bg-slate-50 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"><i data-lucide="edit" class="w-4 h-4"></i></button>
+                                <button onclick="window.hapusKaryawan('${e.id}', this)" class="p-2 bg-slate-50 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                            </div>
+                        </div>
+                    </div>`;
             });
             html += `</div></div>`; container.innerHTML = html;
         };
@@ -1138,6 +1206,7 @@
         window.bukaManajemenGaji = function() {
             let modal = document.createElement('div'); modal.className = 'fixed inset-0 bg-slate-900/60 z-[90] flex justify-center items-center fade-in backdrop-blur-sm p-4';
             let empOptions = window.appState.employees.filter(e => e.role !== 'admin').map(e => `<option value="${e.id}">${e.name}</option>`).join('');
+            
             let today = new Date(); let cm = String(today.getMonth()+1).padStart(2,'0'); let cy = today.getFullYear();
             
             modal.innerHTML = `
@@ -1145,16 +1214,37 @@
                     <button onclick="this.closest('.fixed').remove()" class="absolute top-6 right-6 p-2 bg-slate-100 rounded-full text-slate-400 hover:text-rose-500"><i data-lucide="x" class="w-4 h-4"></i></button>
                     <h3 class="font-bold text-lg text-slate-800 mb-1 flex items-center gap-2"><i data-lucide="wallet" class="w-5 h-5 text-emerald-600"></i> Penggajian</h3>
                     <p class="text-xs text-slate-500 mb-4">Input Manual & Kalkulasi Slip Gaji</p>
+                    
                     <div class="space-y-4 mb-6">
-                        <div><label class="text-xs font-semibold text-slate-500 block mb-1">Bulan Gaji</label><input type="month" id="gaji-bulan" class="w-full border rounded-xl p-3 text-sm bg-slate-50" value="${cy}-${cm}" onchange="window.hitungGajiOtomatis()"></div>
-                        <div><label class="text-xs font-semibold text-slate-500 block mb-1">Karyawan</label><select id="gaji-emp" class="w-full border rounded-xl p-3 text-sm bg-slate-50" onchange="window.hitungGajiOtomatis()"><option value="" disabled selected>Pilih Karyawan...</option>${empOptions}</select></div>
+                        <div>
+                            <label class="text-xs font-semibold text-slate-500 block mb-1">Bulan Gaji</label>
+                            <input type="month" id="gaji-bulan" class="w-full border rounded-xl p-3 text-sm bg-slate-50" value="${cy}-${cm}" onchange="window.hitungGajiOtomatis()">
+                        </div>
+                        <div>
+                            <label class="text-xs font-semibold text-slate-500 block mb-1">Karyawan</label>
+                            <select id="gaji-emp" class="w-full border rounded-xl p-3 text-sm bg-slate-50" onchange="window.hitungGajiOtomatis()">
+                                <option value="" disabled selected>Pilih Karyawan...</option>
+                                ${empOptions}
+                            </select>
+                        </div>
+                        
                         <div class="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-3">
                             <div><label class="text-[10px] font-bold text-slate-500 block mb-1 uppercase tracking-wider">Gaji Pokok (Rp)</label><input type="number" id="gaji-pokok" class="w-full border rounded-lg p-2 text-sm" value="0" oninput="window.updateTotalGaji()"></div>
-                            <div class="flex gap-2"><div class="flex-1"><label class="text-[10px] font-bold text-slate-500 block mb-1 uppercase">Hadir (Hari)</label><input type="number" id="gaji-hadir" class="w-full border rounded-lg p-2 text-sm bg-white" oninput="window.updateTotalGaji()"></div><div class="flex-1"><label class="text-[10px] font-bold text-slate-500 block mb-1 uppercase">Izin/Sakit (Hari)</label><input type="number" id="gaji-izin" class="w-full border rounded-lg p-2 text-sm bg-white" oninput="window.updateTotalGaji()"></div></div>
-                            <div class="flex gap-2"><div class="flex-1"><label class="text-[10px] font-bold text-slate-500 block mb-1 uppercase">Lembur (Jam)</label><input type="number" id="gaji-lembur" class="w-full border rounded-lg p-2 text-sm bg-white" oninput="window.updateTotalGaji()"></div><div class="flex-1"><label class="text-[10px] font-bold text-slate-500 block mb-1 uppercase">Tarif Lembur/Jam</label><input type="number" id="gaji-tarif-lembur" class="w-full border rounded-lg p-2 text-sm" value="20000" oninput="window.updateTotalGaji()"></div></div>
+                            <div class="flex gap-2">
+                                <div class="flex-1"><label class="text-[10px] font-bold text-slate-500 block mb-1 uppercase">Hadir (Hari)</label><input type="number" id="gaji-hadir" class="w-full border rounded-lg p-2 text-sm bg-white" oninput="window.updateTotalGaji()"></div>
+                                <div class="flex-1"><label class="text-[10px] font-bold text-slate-500 block mb-1 uppercase">Izin/Sakit (Hari)</label><input type="number" id="gaji-izin" class="w-full border rounded-lg p-2 text-sm bg-white" oninput="window.updateTotalGaji()"></div>
+                            </div>
+                            <div class="flex gap-2">
+                                <div class="flex-1"><label class="text-[10px] font-bold text-slate-500 block mb-1 uppercase">Lembur (Jam)</label><input type="number" id="gaji-lembur" class="w-full border rounded-lg p-2 text-sm bg-white" oninput="window.updateTotalGaji()"></div>
+                                <div class="flex-1"><label class="text-[10px] font-bold text-slate-500 block mb-1 uppercase">Tarif Lembur/Jam</label><input type="number" id="gaji-tarif-lembur" class="w-full border rounded-lg p-2 text-sm" value="20000" oninput="window.updateTotalGaji()"></div>
+                            </div>
                             <div><label class="text-[10px] font-bold text-rose-500 block mb-1 uppercase tracking-wider">Potongan Kasbon (Rp)</label><input type="number" id="gaji-kasbon" class="w-full border border-rose-200 rounded-lg p-2 text-sm focus:border-rose-400" value="0" oninput="window.updateTotalGaji()"></div>
                         </div>
-                        <div class="bg-emerald-50 p-4 rounded-xl border border-emerald-100 text-center"><p class="text-xs font-bold text-emerald-800 uppercase tracking-widest mb-1">Total Diterima</p><p class="text-2xl font-black text-emerald-600">Rp <span id="gaji-total">0</span></p></div>
+                        
+                        <div class="bg-emerald-50 p-4 rounded-xl border border-emerald-100 text-center">
+                            <p class="text-xs font-bold text-emerald-800 uppercase tracking-widest mb-1">Total Diterima</p>
+                            <p class="text-2xl font-black text-emerald-600">Rp <span id="gaji-total">0</span></p>
+                        </div>
                     </div>
                     <button onclick="window.cetakSlipGaji()" class="w-full bg-emerald-500 text-white font-bold py-3.5 rounded-xl hover:bg-emerald-600 shadow-lg shadow-emerald-200 text-sm flex items-center justify-center gap-2"><i data-lucide="printer" class="w-4 h-4"></i> Cetak Slip Gaji</button>
                 </div>`;
@@ -1173,25 +1263,40 @@
             atts.forEach(att => {
                 let cleanDate = window.formatDateStandard(att.date);
                 let sched = window.appState.schedules.find(s => String(s.empId).trim().toUpperCase() === String(empId).trim().toUpperCase() && window.formatDateStandard(s.date) === cleanDate);
-                let sStart = null, sEnd = null, isValidShift = false;
+                let sStart = null, sEnd = null;
+                let isValidShift = false;
+                
                 if(sched) {
                     let sh = window.appState.shifts.find(s => String(s.id).trim().toUpperCase() === String(sched.shiftId).trim().toUpperCase());
                     if(sh) { sStart = String(sh.startTime).trim(); sEnd = String(sh.endTime).trim(); isValidShift = true; }
                 }
-                if (isValidShift) totalLemburMins += window.hitungLembur(att.clockIn, att.clockOut, sStart, sEnd);
+                
+                if (isValidShift) {
+                    totalLemburMins += window.hitungLembur(att.clockIn, att.clockOut, sStart, sEnd);
+                }
             });
             let jamLembur = Math.floor(totalLemburMins / 60);
 
             let izin = window.appState.leaves.filter(l => String(l.empId).trim().toUpperCase() === String(empId).trim().toUpperCase() && String(l.date).trim().startsWith(bulanTahun) && String(l.status).trim() === 'Disetujui').length;
 
-            document.getElementById('gaji-hadir').value = totalHadir; document.getElementById('gaji-izin').value = izin; document.getElementById('gaji-lembur').value = jamLembur;
-            if (parseInt(document.getElementById('gaji-pokok').value) === 0) document.getElementById('gaji-pokok').value = "3000000"; 
+            document.getElementById('gaji-hadir').value = totalHadir;
+            document.getElementById('gaji-izin').value = izin;
+            document.getElementById('gaji-lembur').value = jamLembur;
+            
+            if (parseInt(document.getElementById('gaji-pokok').value) === 0) {
+                document.getElementById('gaji-pokok').value = "3000000"; 
+            }
             window.updateTotalGaji();
         };
 
         window.updateTotalGaji = function() {
-            let pokok = parseInt(document.getElementById('gaji-pokok').value) || 0; let lemburJam = parseInt(document.getElementById('gaji-lembur').value) || 0; let tarifLembur = parseInt(document.getElementById('gaji-tarif-lembur').value) || 0; let kasbon = parseInt(document.getElementById('gaji-kasbon').value) || 0;
-            let total = pokok + (lemburJam * tarifLembur) - kasbon; document.getElementById('gaji-total').innerText = total.toLocaleString('id-ID');
+            let pokok = parseInt(document.getElementById('gaji-pokok').value) || 0;
+            let lemburJam = parseInt(document.getElementById('gaji-lembur').value) || 0;
+            let tarifLembur = parseInt(document.getElementById('gaji-tarif-lembur').value) || 0;
+            let kasbon = parseInt(document.getElementById('gaji-kasbon').value) || 0;
+            
+            let total = pokok + (lemburJam * tarifLembur) - kasbon;
+            document.getElementById('gaji-total').innerText = total.toLocaleString('id-ID');
         };
 
         window.cetakSlipGaji = function() {
@@ -1200,21 +1305,42 @@
             
             let emp = window.appState.employees.find(e => String(e.id).trim().toUpperCase() === String(empId).trim().toUpperCase());
             let bulan = document.getElementById('gaji-bulan').value;
-            let pokok = parseInt(document.getElementById('gaji-pokok').value) || 0; let hadir = document.getElementById('gaji-hadir').value; let izin = document.getElementById('gaji-izin').value;
-            let lembur = document.getElementById('gaji-lembur').value; let uLembur = (parseInt(lembur) * (parseInt(document.getElementById('gaji-tarif-lembur').value)||0)); let kasbon = parseInt(document.getElementById('gaji-kasbon').value) || 0;
+            let pokok = parseInt(document.getElementById('gaji-pokok').value) || 0;
+            let hadir = document.getElementById('gaji-hadir').value;
+            let izin = document.getElementById('gaji-izin').value;
+            let lembur = document.getElementById('gaji-lembur').value;
+            let uLembur = (parseInt(lembur) * (parseInt(document.getElementById('gaji-tarif-lembur').value)||0));
+            let kasbon = parseInt(document.getElementById('gaji-kasbon').value) || 0;
             let total = document.getElementById('gaji-total').innerText;
 
-            let printArea = document.createElement('div'); printArea.id = 'slip-gaji-print-area'; printArea.className = 'bg-white p-8 font-mono text-sm max-w-2xl mx-auto';
+            let printArea = document.createElement('div');
+            printArea.id = 'slip-gaji-print-area';
+            printArea.className = 'bg-white p-8 font-mono text-sm max-w-2xl mx-auto';
             printArea.innerHTML = `
-                <div class="text-center mb-6 border-b-2 border-slate-800 pb-4"><h1 class="text-2xl font-bold uppercase tracking-widest">${window.appState.settings.companyName}</h1><p>SLIP GAJI KARYAWAN</p><p>Periode: ${bulan}</p></div>
-                <div class="mb-6 grid grid-cols-2 gap-4"><div><p><strong>Nama:</strong> ${emp.name}</p><p><strong>Jabatan:</strong> ${emp.position}</p></div><div class="text-right"><p><strong>Hadir:</strong> ${hadir} Hari</p><p><strong>Izin/Sakit/Libur:</strong> ${izin} Hari</p></div></div>
-                <table class="w-full mb-6 border-collapse"><tr class="border-b border-slate-300"><th class="text-left py-2">Keterangan</th><th class="text-right py-2">Jumlah</th></tr>
-                <tr><td class="py-2">Gaji Pokok</td><td class="text-right py-2">Rp ${pokok.toLocaleString('id-ID')}</td></tr>
-                <tr><td class="py-2">Uang Lembur (${lembur} jam)</td><td class="text-right py-2">Rp ${uLembur.toLocaleString('id-ID')}</td></tr>
-                <tr><td class="py-2 text-rose-600">Potongan Kasbon</td><td class="text-right py-2 text-rose-600">- Rp ${kasbon.toLocaleString('id-ID')}</td></tr>
-                <tr class="border-t-2 border-slate-800 font-bold text-lg"><td class="py-3">TOTAL DITERIMA</td><td class="text-right py-3">Rp ${total}</td></tr></table>
-                <div class="mt-12 flex justify-between text-center"><div><p class="mb-16">Penerima,</p><p class="underline font-bold">${emp.name}</p></div><div><p class="mb-16">Manager HRD,</p><p class="underline font-bold">${window.appState.currentUser.name}</p></div></div>`;
-            document.body.appendChild(printArea); window.print(); setTimeout(() => printArea.remove(), 1000);
+                <div class="text-center mb-6 border-b-2 border-slate-800 pb-4">
+                    <h1 class="text-2xl font-bold uppercase tracking-widest">${window.appState.settings.companyName}</h1>
+                    <p>SLIP GAJI KARYAWAN</p>
+                    <p>Periode: ${bulan}</p>
+                </div>
+                <div class="mb-6 grid grid-cols-2 gap-4">
+                    <div><p><strong>Nama:</strong> ${emp.name}</p><p><strong>Jabatan:</strong> ${emp.position}</p></div>
+                    <div class="text-right"><p><strong>Hadir:</strong> ${hadir} Hari</p><p><strong>Izin/Sakit:</strong> ${izin} Hari</p></div>
+                </div>
+                <table class="w-full mb-6 border-collapse">
+                    <tr class="border-b border-slate-300"><th class="text-left py-2">Keterangan</th><th class="text-right py-2">Jumlah</th></tr>
+                    <tr><td class="py-2">Gaji Pokok</td><td class="text-right py-2">Rp ${pokok.toLocaleString('id-ID')}</td></tr>
+                    <tr><td class="py-2">Uang Lembur (${lembur} jam)</td><td class="text-right py-2">Rp ${uLembur.toLocaleString('id-ID')}</td></tr>
+                    <tr><td class="py-2 text-rose-600">Potongan Kasbon</td><td class="text-right py-2 text-rose-600">- Rp ${kasbon.toLocaleString('id-ID')}</td></tr>
+                    <tr class="border-t-2 border-slate-800 font-bold text-lg"><td class="py-3">TOTAL DITERIMA</td><td class="text-right py-3">Rp ${total}</td></tr>
+                </table>
+                <div class="mt-12 flex justify-between text-center">
+                    <div><p class="mb-16">Penerima,</p><p class="underline font-bold">${emp.name}</p></div>
+                    <div><p class="mb-16">Manager HRD,</p><p class="underline font-bold">${window.appState.currentUser.name}</p></div>
+                </div>
+            `;
+            document.body.appendChild(printArea);
+            window.print();
+            setTimeout(() => printArea.remove(), 1000);
         };
 
         window.renderAkun = function(container) {
@@ -1280,14 +1406,23 @@
         };
 
         function renderBottomNav(container) {
+            const user = window.appState.currentUser;
             const nav = document.createElement('div');
-            nav.className = 'fixed bottom-0 w-full md:max-w-5xl lg:max-w-7xl bg-white border-t border-slate-100 flex justify-around md:justify-center md:gap-24 px-6 py-3 md:py-4 md:rounded-t-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.05)] z-50 pb-5 md:pb-4 no-print'; 
-            const menus = [
+            nav.className = 'fixed bottom-0 w-full md:max-w-5xl lg:max-w-7xl bg-white border-t border-slate-100 flex justify-around md:justify-center md:gap-12 px-2 py-3 md:py-4 md:rounded-t-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.05)] z-50 pb-5 md:pb-4 no-print'; 
+            let menus = [
                 { id: 'dashboard', icon: 'layout-dashboard', label: 'Beranda', activeBg: 'bg-blue-600 shadow-blue-200', activeText: 'text-blue-600' },
+                { id: 'jadwal', icon: 'calendar-days', label: 'Jadwal', activeBg: 'bg-purple-500 shadow-purple-200', activeText: 'text-purple-600' },
                 { id: 'rekap', icon: 'file-spreadsheet', label: 'Rekap', activeBg: 'bg-emerald-500 shadow-emerald-200', activeText: 'text-emerald-600' },
                 { id: 'karyawan', icon: 'users', label: 'Karyawan', activeBg: 'bg-violet-500 shadow-violet-200', activeText: 'text-violet-600' },
                 { id: 'akun', icon: 'user-circle', label: 'Akun', activeBg: 'bg-slate-700 shadow-slate-300', activeText: 'text-slate-800' }
             ];
+
+            if (user && user.role === 'admin') {
+                menus = menus.filter(m => m.id !== 'jadwal');
+            } else {
+                menus = menus.filter(m => m.id !== 'karyawan');
+            }
+
             menus.forEach(m => {
                 const isActive = currentTab === m.id;
                 nav.innerHTML += `
